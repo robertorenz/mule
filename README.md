@@ -13,10 +13,11 @@ Early scaffolding. The foundation is in place and runnable:
 - ✅ Core simulation model — players, plots, MULEs, resources, market/prices
 - ✅ Turn/phase state machine (LandGrant → Development → Production → Auction → Resolution)
 - ✅ Rendered game board with ownership, MULEs, and live player scoring
-- ⬜ Real-time development phase (movement, store, installing MULEs)
-- ⬜ Production resolution and colony events
+- ✅ Real-time Development phase — walk the colonist, claim land, town store, install MULEs
+- ✅ Production resolution and month/turn loop with end-game standings
+- ⬜ Colony events (pirates, sunspots, pest attacks)
 - ⬜ Real-time double-auction phase
-- ⬜ AI opponents
+- ⬜ AI opponents (currently AI colonists skip their turn)
 - ⬜ Networked multiplayer
 
 ## Architecture
@@ -48,7 +49,18 @@ Requires the [.NET SDK](https://dotnet.microsoft.com/) (9.0+).
 dotnet run --project src/Mule.Game
 ```
 
-Press **Esc** to quit.
+### Controls
+
+| Key | Action |
+|-----|--------|
+| WASD / Arrows | Walk your colonist |
+| Space | Context action: claim empty land · enter the town store · install a led MULE |
+| Enter | End your turn (or continue at the month summary) |
+| Esc | Quit |
+
+The turn loop: claim a plot, walk to **TOWN** to buy and outfit a MULE, then walk
+it back to your land and install it. When the timer runs out (or you press Enter),
+production resolves and the next month begins.
 
 ## License
 

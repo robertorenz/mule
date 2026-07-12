@@ -12,6 +12,7 @@ public sealed class GameState
     public int Seed { get; }
     public PlanetMap Map { get; }
     public Market Prices { get; } = new();
+    public Store Store { get; } = new();
     public IReadOnlyList<Player> Players { get; }
 
     public GamePhase Phase { get; set; } = GamePhase.Setup;

@@ -14,17 +14,19 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private SpriteFont _font = null!;
 
     private GameState _state = null!;
-
-    // Optional headless screenshot: set MULE_SCREENSHOT=<path> to capture one
-    // frame to a PNG and exit. Used for automated visual verification.
-    private readonly string? _screenshotPath = Environment.GetEnvironmentVariable("MULE_SCREENSHOT");
-    private int _frame;
+    private DevelopmentPhase _dev = null!;
+    private MapLayout _layout;
 
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
     private const int SidebarWidth = 340;
     private const int HeaderHeight = 64;
     private const int Margin = 24;
+
+    // Optional headless screenshot: set MULE_SCREENSHOT=<path> to capture one
+    // frame to a PNG and exit. Used for automated visual verification.
+    private readonly string? _screenshotPath = Environment.GetEnvironmentVariable("MULE_SCREENSHOT");
+    private int _frame;
 
     public Game1()
     {
@@ -38,39 +40,21 @@ public class Game1 : Microsoft.Xna.Framework.Game
         Window.Title = "M.U.L.E. — Colony";
     }
 
+    private Rectangle MapArea => new(
+        Margin,
+        HeaderHeight + Margin,
+        WindowWidth - SidebarWidth - Margin * 2,
+        WindowHeight - HeaderHeight - Margin * 2 - 32);
+
     protected override void Initialize()
     {
         // Deterministic seed for now; will be chosen at setup / shared over the network.
         _state = GameFactory.NewGame(seed: 1983, humanPlayers: 1, totalPlayers: 4, totalMonths: 12);
-        SeedDemoBoard();
+        _layout = new MapLayout(_state.Map, MapArea);
+        _dev = new DevelopmentPhase(_state, _layout);
+        if (Environment.GetEnvironmentVariable("MULE_OPENSTORE") != null)
+            _dev.DebugOpenStore();
         base.Initialize();
-    }
-
-    /// <summary>
-    /// Temporary: hand out a couple of plots and MULEs so the board renders with
-    /// real ownership and production markers. Replaced by the LandGrant phase later.
-    /// </summary>
-    private void SeedDemoBoard()
-    {
-        var map = _state.Map;
-        (int x, int y, MuleOutfit outfit)[] demo =
-        {
-            (3, 1, MuleOutfit.Food),
-            (5, 1, MuleOutfit.Energy),
-            (2, 3, MuleOutfit.Smithore),
-            (6, 3, MuleOutfit.Crystite),
-            (3, 2, MuleOutfit.None),
-        };
-
-        for (int i = 0; i < demo.Length; i++)
-        {
-            var (x, y, outfit) = demo[i];
-            if (!map.InBounds(x, y)) continue;
-            var plot = map.At(x, y);
-            if (plot.Terrain == Terrain.Town) continue;
-            plot.OwnerId = i % _state.Players.Count;
-            plot.Mule = outfit;
-        }
     }
 
     protected override void LoadContent()
@@ -82,9 +66,16 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     protected override void Update(GameTime gameTime)
     {
-        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
-            Keyboard.GetState().IsKeyDown(Keys.Escape))
+        var keys = Keyboard.GetState();
+        if (_dev.CanQuitOnEscape &&
+            (keys.IsKeyDown(Keys.Escape) || GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed))
+        {
             Exit();
+            return;
+        }
+
+        _layout = new MapLayout(_state.Map, MapArea);
+        _dev.Update((float)gameTime.ElapsedGameTime.TotalSeconds, keys, _layout);
 
         base.Update(gameTime);
     }
@@ -96,7 +87,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
         DrawHeader();
         DrawMap();
+        _dev.DrawWorld(_spriteBatch, _shapes, _font);
         DrawSidebar();
+        _dev.DrawModal(_spriteBatch, _shapes, _font, WindowWidth, WindowHeight);
         DrawFooter();
 
         _spriteBatch.End();
@@ -108,18 +101,6 @@ public class Game1 : Microsoft.Xna.Framework.Game
         }
 
         base.Draw(gameTime);
-    }
-
-    private void CaptureScreenshot(string path)
-    {
-        int w = GraphicsDevice.PresentationParameters.BackBufferWidth;
-        int h = GraphicsDevice.PresentationParameters.BackBufferHeight;
-        var data = new Color[w * h];
-        GraphicsDevice.GetBackBufferData(data);
-        using var tex = new Texture2D(GraphicsDevice, w, h);
-        tex.SetData(data);
-        using var fs = System.IO.File.Create(path);
-        tex.SaveAsPng(fs, w, h);
     }
 
     private void DrawHeader()
@@ -139,21 +120,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     private void DrawMap()
     {
-        var map = _state.Map;
-        int areaX = Margin;
-        int areaY = HeaderHeight + Margin;
-        int areaW = WindowWidth - SidebarWidth - Margin * 2;
-        int areaH = WindowHeight - HeaderHeight - Margin * 2 - 32;
-
-        int cell = Math.Min(areaW / map.Width, areaH / map.Height);
-        int gridW = cell * map.Width;
-        int gridH = cell * map.Height;
-        int originX = areaX + (areaW - gridW) / 2;
-        int originY = areaY + (areaH - gridH) / 2;
-
-        foreach (var plot in map.AllPlots())
+        foreach (var plot in _state.Map.AllPlots())
         {
-            var rect = new Rectangle(originX + plot.X * cell, originY + plot.Y * cell, cell - 2, cell - 2);
+            var rect = _layout.PlotRect(plot.X, plot.Y);
             _shapes.Fill(rect, Palette.TerrainColor(plot.Terrain));
 
             if (plot.Terrain == Terrain.Town)
@@ -164,7 +133,6 @@ public class Game1 : Microsoft.Xna.Framework.Game
                     new Vector2(rect.Center.X - ls.X / 2, rect.Center.Y - ls.Y / 2), Palette.Text);
             }
 
-            // Ownership border in the owner's color.
             if (plot.IsOwned)
             {
                 var owner = _state.PlayerById(plot.OwnerId);
@@ -176,10 +144,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
                 _shapes.Outline(rect, Palette.Grid, 1);
             }
 
-            // Installed MULE indicator.
             if (plot.HasMule)
             {
-                int d = Math.Max(8, cell / 5);
+                int d = Math.Max(8, _layout.Cell / 5);
                 var dot = new Rectangle(rect.Center.X - d / 2, rect.Center.Y - d / 2, d, d);
                 _shapes.Fill(dot, Palette.MuleColor(plot.Mule));
                 _shapes.Outline(dot, Palette.Background, 2);
@@ -200,23 +167,29 @@ public class Game1 : Microsoft.Xna.Framework.Game
         int cardH = 118;
         int y = HeaderHeight + pad;
 
+        var active = _dev.ActiveColonist;
+
         foreach (var p in _state.Players)
         {
             var card = new Rectangle(cardX, y, cardW, cardH);
             _shapes.Fill(card, Palette.PanelLight);
-            _shapes.Outline(card, Palette.Grid, 1);
+            _shapes.Outline(card, p == active ? Palette.FromPacked(p.Color) : Palette.Grid, p == active ? 2 : 1);
 
-            // Color swatch + name + AI tag.
             _shapes.Fill(new Rectangle(cardX + 12, y + 14, 14, 14), Palette.FromPacked(p.Color));
             _spriteBatch.DrawString(_font, p.Name, new Vector2(cardX + 34, y + 12), Palette.Text);
-            if (p.IsAI)
-                _spriteBatch.DrawString(_font, "AI", new Vector2(card.Right - 34, y + 12), Palette.TextMuted);
+
+            string tag = p.IsAI ? "AI" : (p == active ? "TURN" : "");
+            if (tag.Length > 0)
+            {
+                var ts = _font.MeasureString(tag);
+                _spriteBatch.DrawString(_font, tag, new Vector2(card.Right - 14 - ts.X, y + 12),
+                    p == active ? Palette.Food : Palette.TextMuted);
+            }
 
             _spriteBatch.DrawString(_font, $"${p.Money}", new Vector2(cardX + 12, y + 36), Palette.Text);
             _spriteBatch.DrawString(_font, $"Score {p.Score(_state)}",
                 new Vector2(card.Right - 118, y + 36), Palette.TextMuted);
 
-            // Resource stores as a compact colored row.
             int ry = y + 66;
             int col = 0;
             foreach (Resource r in Enum.GetValues<Resource>())
@@ -235,7 +208,19 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     private void DrawFooter()
     {
-        string hint = "Esc: quit    |    Scaffolding build - map, players & economy model wired up";
+        string hint = "WASD/Arrows: move   |   Space: claim land / enter store / install MULE   |   Enter: end turn   |   Esc: quit";
         _spriteBatch.DrawString(_font, hint, new Vector2(Margin, WindowHeight - 28), Palette.TextMuted);
+    }
+
+    private void CaptureScreenshot(string path)
+    {
+        int w = GraphicsDevice.PresentationParameters.BackBufferWidth;
+        int h = GraphicsDevice.PresentationParameters.BackBufferHeight;
+        var data = new Color[w * h];
+        GraphicsDevice.GetBackBufferData(data);
+        using var tex = new Texture2D(GraphicsDevice, w, h);
+        tex.SetData(data);
+        using var fs = System.IO.File.Create(path);
+        tex.SaveAsPng(fs, w, h);
     }
 }

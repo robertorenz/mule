@@ -17,8 +17,13 @@ public sealed class Player
 
     public int Money { get; set; }
 
-    /// <summary>Uninstalled MULEs the player is carrying.</summary>
-    public int MulesInInventory { get; set; }
+    /// <summary>
+    /// The MULE the colonist is currently leading (one at a time, as in the
+    /// original). <see cref="MuleOutfit.None"/> means empty-handed.
+    /// </summary>
+    public MuleOutfit CarriedMule { get; set; } = MuleOutfit.None;
+
+    public bool IsLeadingMule => CarriedMule != MuleOutfit.None;
 
     private readonly Dictionary<Resource, int> _stores = new()
     {
