@@ -17,7 +17,7 @@ namespace Mule.Game;
 /// </summary>
 public sealed class DevelopmentPhase
 {
-    private enum Mode { Walking, Store, Summary, GameOver }
+    private enum Mode { Walking, Store, AiTurn, Summary, GameOver }
 
     private const float TurnSeconds = 45f;
     private const float PawnSpeed = 260f; // pixels/second
@@ -35,6 +35,12 @@ public sealed class DevelopmentPhase
     private int _storeSelection;
     private IReadOnlyList<ProductionResult> _lastProduction = Array.Empty<ProductionResult>();
 
+    // AI turn playback
+    private List<AiAction> _aiPlan = new();
+    private int _aiStep;
+    private Vector2 _aiTarget;
+    private float _aiPause;
+
     private KeyboardState _prevKeys;
     private MapLayout _layout;
 
@@ -49,7 +55,7 @@ public sealed class DevelopmentPhase
         _activeIndex >= 0 && _activeIndex < _state.Players.Count ? _state.Players[_activeIndex] : null;
 
     /// <summary>Esc quits only when it isn't being used to dismiss a modal.</summary>
-    public bool CanQuitOnEscape => _mode is Mode.Walking or Mode.GameOver;
+    public bool CanQuitOnEscape => _mode is Mode.Walking or Mode.AiTurn or Mode.GameOver;
 
     /// <summary>Test hook: force the store open so verification tooling can capture it.</summary>
     public void DebugOpenStore() => _mode = Mode.Store;
@@ -65,6 +71,7 @@ public sealed class DevelopmentPhase
         {
             case Mode.Walking: UpdateWalking(dt, keys); break;
             case Mode.Store: UpdateStore(keys); break;
+            case Mode.AiTurn: UpdateAiTurn(dt); break;
             case Mode.Summary: UpdateSummary(keys); break;
             case Mode.GameOver: break;
         }
@@ -177,19 +184,73 @@ public sealed class DevelopmentPhase
             Flash(menu[_storeSelection].Act(_state, colonist).Message);
     }
 
+    // ---- AI turn playback --------------------------------------------------
+
+    private void UpdateAiTurn(float dt)
+    {
+        var colonist = ActiveColonist;
+        if (colonist == null) { EndColonistTurn(); return; }
+
+        _timeLeft -= dt; // safety net; the AI normally finishes well within the turn
+        if (_aiStep >= _aiPlan.Count || _timeLeft <= 0)
+        {
+            EndColonistTurn();
+            return;
+        }
+
+        if (_aiPause > 0) { _aiPause -= dt; return; }
+
+        var toTarget = _aiTarget - _pawn;
+        float dist = toTarget.Length();
+        float step = PawnSpeed * dt;
+
+        if (dist <= step || dist <= 4f)
+        {
+            _pawn = _aiTarget;
+            ApplyAiAction(colonist, _aiPlan[_aiStep]);
+            _aiStep++;
+            _aiPause = 0.45f;
+            SetAiTarget();
+        }
+        else
+        {
+            _pawn += toTarget / dist * step;
+        }
+    }
+
+    private void ApplyAiAction(Player colonist, AiAction action)
+    {
+        ActionResult result = action.Type switch
+        {
+            AiActionType.Claim => ColonyActions.ClaimPlot(_state, colonist, _state.Map.At(action.X, action.Y)),
+            AiActionType.Buy => ColonyActions.BuyMule(_state, colonist, action.Outfit),
+            AiActionType.Install => ColonyActions.InstallMule(_state, colonist, _state.Map.At(action.X, action.Y)),
+            _ => ActionResult.Fail("")
+        };
+        if (result.Message.Length > 0)
+            Flash($"{colonist.Name}: {result.Message}");
+    }
+
+    private void SetAiTarget()
+    {
+        if (_aiStep < _aiPlan.Count)
+        {
+            var a = _aiPlan[_aiStep];
+            _aiTarget = _layout.PlotCenter(a.X, a.Y);
+        }
+    }
+
     // ---- Turn / phase flow -------------------------------------------------
 
     private void EndColonistTurn() => AdvanceToNextColonist();
 
     private void AdvanceToNextColonist()
     {
-        for (int next = _activeIndex + 1; next < _state.Players.Count; next++)
-        {
-            if (_state.Players[next].IsAI) continue; // AI turns are a no-op for now
+        int next = _activeIndex + 1;
+        if (next < _state.Players.Count)
             BeginColonistTurn(next);
-            return;
-        }
-        ResolveMonth();
+        else
+            ResolveMonth();
     }
 
     private void BeginColonistTurn(int index)
@@ -197,9 +258,23 @@ public sealed class DevelopmentPhase
         _activeIndex = index;
         _state.ActivePlayerIndex = index;
         _state.Phase = GamePhase.Development;
-        _mode = Mode.Walking;
         _timeLeft = TurnSeconds;
         _pawn = TownCenter();
+
+        var colonist = _state.Players[index];
+        if (colonist.IsAI)
+        {
+            _aiPlan = AiPlanner.PlanTurn(_state, colonist);
+            _aiStep = 0;
+            _aiPause = 0.5f;
+            SetAiTarget();
+            _mode = Mode.AiTurn;
+            Flash($"{colonist.Name} is developing...");
+        }
+        else
+        {
+            _mode = Mode.Walking;
+        }
     }
 
     private void ResolveMonth()
@@ -252,7 +327,7 @@ public sealed class DevelopmentPhase
     public void DrawWorld(SpriteBatch batch, ShapeBatch shapes, SpriteFont font)
     {
         // The colonist pawn.
-        if (_mode is Mode.Walking or Mode.Store)
+        if (_mode is Mode.Walking or Mode.Store or Mode.AiTurn)
         {
             var colonist = ActiveColonist;
             if (colonist != null)

@@ -35,6 +35,15 @@ public sealed class PlanetMap
                 yield return _plots[x, y];
     }
 
+    /// <summary>The town plot (there is exactly one).</summary>
+    public Plot Town()
+    {
+        foreach (var plot in AllPlots())
+            if (plot.Terrain == Terrain.Town)
+                return plot;
+        return _plots[Width / 2, Height / 2];
+    }
+
     /// <summary>
     /// Generates a deterministic planet from a seed. Determinism matters: the same
     /// seed must produce the same map on every machine so networked players agree.

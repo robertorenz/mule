@@ -36,5 +36,14 @@ public static class ResourceExtensions
         _ => throw new System.InvalidOperationException("Unoutfitted MULE has no resource.")
     };
 
+    public static MuleOutfit ToOutfit(this Resource r) => r switch
+    {
+        Resource.Food => MuleOutfit.Food,
+        Resource.Energy => MuleOutfit.Energy,
+        Resource.Smithore => MuleOutfit.Smithore,
+        Resource.Crystite => MuleOutfit.Crystite,
+        _ => MuleOutfit.None
+    };
+
     public static string DisplayName(this Resource r) => r.ToString();
 }

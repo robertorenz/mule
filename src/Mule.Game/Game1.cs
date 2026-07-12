@@ -49,7 +49,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
     protected override void Initialize()
     {
         // Deterministic seed for now; will be chosen at setup / shared over the network.
-        _state = GameFactory.NewGame(seed: 1983, humanPlayers: 1, totalPlayers: 4, totalMonths: 12);
+        int humans = Environment.GetEnvironmentVariable("MULE_ALLAI") != null ? 0 : 1;
+        _state = GameFactory.NewGame(seed: 1983, humanPlayers: humans, totalPlayers: 4, totalMonths: 12);
         _layout = new MapLayout(_state.Map, MapArea);
         _dev = new DevelopmentPhase(_state, _layout);
         if (Environment.GetEnvironmentVariable("MULE_OPENSTORE") != null)
@@ -94,7 +95,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
         _spriteBatch.End();
 
-        if (_screenshotPath != null && ++_frame == 3)
+        int shotFrame = int.TryParse(Environment.GetEnvironmentVariable("MULE_SHOTFRAME"), out var f) ? f : 3;
+        if (_screenshotPath != null && ++_frame == shotFrame)
         {
             CaptureScreenshot(_screenshotPath);
             Exit();
