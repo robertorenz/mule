@@ -17,6 +17,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private DevelopmentPhase _dev = null!;
     private MapLayout _layout;
 
+    private SetupScreen _setup = null!;
+    private bool _inSetup = true;
+
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
     private const int SidebarWidth = 340;
@@ -48,20 +51,39 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     protected override void Initialize()
     {
-        // Deterministic seed for now; will be chosen at setup / shared over the network.
-        int humans = Environment.GetEnvironmentVariable("MULE_ALLAI") != null ? 0 : 1;
-        _state = GameFactory.NewGame(seed: 1983, humanPlayers: humans, totalPlayers: 4, totalMonths: 12);
+        _setup = new SetupScreen();
+
+        // Verification hooks skip setup and drive a default game directly.
+        bool autoStart = Env("MULE_OPENSTORE") || Env("MULE_AUCTION") ||
+                         Env("MULE_SUMMARY") || Env("MULE_EVENT") || Env("MULE_ALLAI");
+        if (autoStart)
+        {
+            StartGame(new GameConfig
+            {
+                TotalPlayers = 4,
+                Humans = Env("MULE_ALLAI") ? 0 : 1,
+                Months = 12,
+                Seed = 1983,
+                StartMoney = 1000,
+                DifficultyName = "Standard",
+            });
+            if (Env("MULE_OPENSTORE")) _dev.DebugOpenStore();
+            if (Env("MULE_AUCTION")) _dev.DebugStartAuction();
+            if (Env("MULE_SUMMARY")) _dev.DebugShowSummary();
+            if (Env("MULE_EVENT")) _dev.DebugShowEvent();
+        }
+
+        base.Initialize();
+    }
+
+    private static bool Env(string name) => Environment.GetEnvironmentVariable(name) != null;
+
+    private void StartGame(GameConfig cfg)
+    {
+        _state = GameFactory.NewGame(cfg.Seed, cfg.Humans, cfg.TotalPlayers, cfg.Months, cfg.StartMoney);
         _layout = new MapLayout(_state.Map, MapArea);
         _dev = new DevelopmentPhase(_state, _layout);
-        if (Environment.GetEnvironmentVariable("MULE_OPENSTORE") != null)
-            _dev.DebugOpenStore();
-        if (Environment.GetEnvironmentVariable("MULE_AUCTION") != null)
-            _dev.DebugStartAuction();
-        if (Environment.GetEnvironmentVariable("MULE_SUMMARY") != null)
-            _dev.DebugShowSummary();
-        if (Environment.GetEnvironmentVariable("MULE_EVENT") != null)
-            _dev.DebugShowEvent();
-        base.Initialize();
+        _inSetup = false;
     }
 
     protected override void LoadContent()
@@ -74,6 +96,15 @@ public class Game1 : Microsoft.Xna.Framework.Game
     protected override void Update(GameTime gameTime)
     {
         var keys = Keyboard.GetState();
+
+        if (_inSetup)
+        {
+            if (keys.IsKeyDown(Keys.Escape)) Exit();
+            else if (_setup.Update(keys)) StartGame(_setup.BuildConfig());
+            base.Update(gameTime);
+            return;
+        }
+
         if (_dev.CanQuitOnEscape &&
             (keys.IsKeyDown(Keys.Escape) || GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed))
         {
@@ -84,6 +115,12 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _layout = new MapLayout(_state.Map, MapArea);
         _dev.Update((float)gameTime.ElapsedGameTime.TotalSeconds, keys, _layout);
 
+        if (_dev.RestartRequested)
+        {
+            _setup = new SetupScreen();
+            _inSetup = true;
+        }
+
         base.Update(gameTime);
     }
 
@@ -91,6 +128,15 @@ public class Game1 : Microsoft.Xna.Framework.Game
     {
         GraphicsDevice.Clear(Palette.Background);
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+
+        if (_inSetup)
+        {
+            _setup.Draw(_spriteBatch, _shapes, _font, WindowWidth, WindowHeight);
+            _spriteBatch.End();
+            CaptureIfRequested();
+            base.Draw(gameTime);
+            return;
+        }
 
         DrawHeader();
         if (!_dev.IsAuction) DrawMap();
@@ -100,15 +146,19 @@ public class Game1 : Microsoft.Xna.Framework.Game
         DrawFooter();
 
         _spriteBatch.End();
+        CaptureIfRequested();
+        base.Draw(gameTime);
+    }
 
+    private void CaptureIfRequested()
+    {
+        if (_screenshotPath == null) return;
         int shotFrame = int.TryParse(Environment.GetEnvironmentVariable("MULE_SHOTFRAME"), out var f) ? f : 3;
-        if (_screenshotPath != null && ++_frame == shotFrame)
+        if (++_frame == shotFrame)
         {
             CaptureScreenshot(_screenshotPath);
             Exit();
         }
-
-        base.Draw(gameTime);
     }
 
     private void DrawHeader()

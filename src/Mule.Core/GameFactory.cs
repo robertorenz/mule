@@ -20,7 +20,8 @@ public static class GameFactory
 
     private static readonly string[] DefaultNames = { "Player 1", "Blorb", "Zorp", "Nib" };
 
-    public static GameState NewGame(int seed, int humanPlayers = 1, int totalPlayers = 4, int totalMonths = 12)
+    public static GameState NewGame(int seed, int humanPlayers = 1, int totalPlayers = 4,
+        int totalMonths = 12, int startMoney = 1000)
     {
         if (totalPlayers < 1) totalPlayers = 1;
         if (totalPlayers > 4) totalPlayers = 4;
@@ -32,7 +33,7 @@ public static class GameFactory
             bool isAI = i >= humanPlayers;
             var player = new Player(i, DefaultNames[i], PlayerColors[i], isAI)
             {
-                Money = 1000,
+                Money = startMoney,
             };
             player.SetStore(Resource.Food, 4);
             player.SetStore(Resource.Energy, 2);

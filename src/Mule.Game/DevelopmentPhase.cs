@@ -74,6 +74,11 @@ public sealed class DevelopmentPhase
     /// <summary>True while an auction is running, so the map is replaced by the auction view.</summary>
     public bool IsAuction => _mode == Mode.Auction;
 
+    public bool IsGameOver => _mode == Mode.GameOver;
+
+    /// <summary>Set when the player asks to play again from the final screen.</summary>
+    public bool RestartRequested { get; private set; }
+
     /// <summary>Test hook: force the store open so verification tooling can capture it.</summary>
     public void DebugOpenStore() => _mode = Mode.Store;
 
@@ -139,7 +144,9 @@ public sealed class DevelopmentPhase
             case Mode.Auction: UpdateAuction(dt, keys); break;
             case Mode.Summary: UpdateSummary(keys); break;
             case Mode.Event: UpdateEvent(keys); break;
-            case Mode.GameOver: break;
+            case Mode.GameOver:
+                if (Pressed(keys, Keys.Enter) || Pressed(keys, Keys.Space)) RestartRequested = true;
+                break;
         }
 
         _prevKeys = keys;
@@ -746,7 +753,7 @@ public sealed class DevelopmentPhase
             }
         }
 
-        string footer = cont ? "Press Enter to start the next month" : "Press Esc to quit";
+        string footer = cont ? "Press Enter to start the next month" : "Press Enter to play again";
         batch.DrawString(font, footer, new Vector2(x, panel.Bottom - 40), Palette.TextMuted);
     }
 }

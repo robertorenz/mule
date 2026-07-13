@@ -23,7 +23,8 @@ Early scaffolding. The foundation is in place and runnable:
 - ✅ Colony events — a monthly news bulletin (pirates, sunspots, pest attacks,
   meteor strikes, windfalls) that leans toward helping the trailer and troubling
   the leader, keeping the race close
-- ⬜ A setup screen (players, colors, difficulty, seed)
+- ✅ Setup screen — choose players, humans, difficulty, game length and map seed;
+  play again from the end screen
 - ⬜ Smarter AI (react to prices and shortages)
 - ⬜ Networked multiplayer
 
@@ -55,6 +56,10 @@ Requires the [.NET SDK](https://dotnet.microsoft.com/) (9.0+).
 ```sh
 dotnet run --project src/Mule.Game
 ```
+
+On launch you land on the setup screen: pick the number of players, how many are
+human, difficulty (which sets starting cash), game length, and the map seed, then
+press Enter to start. Everything else defaults sensibly.
 
 ### Controls
 
