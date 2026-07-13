@@ -20,7 +20,9 @@ Early scaffolding. The foundation is in place and runnable:
   Smithore refined back into MULEs
 - ✅ Resource consumption — Food sets your turn length, Energy powers production
   (unpowered MULEs sit idle); the AI keeps itself self-sufficient in power
-- ⬜ Colony events (pirates, sunspots, pest attacks)
+- ✅ Colony events — a monthly news bulletin (pirates, sunspots, pest attacks,
+  meteor strikes, windfalls) that leans toward helping the trailer and troubling
+  the leader, keeping the race close
 - ⬜ A setup screen (players, colors, difficulty, seed)
 - ⬜ Smarter AI (react to prices and shortages)
 - ⬜ Networked multiplayer

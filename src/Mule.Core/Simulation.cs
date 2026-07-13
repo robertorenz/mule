@@ -20,6 +20,7 @@ public static class Simulation
             state.Month = month;
             state.Phase = GamePhase.Development;
             Upkeep.ConsumeFood(state);
+            var evt = ColonyEvents.Resolve(state);
 
             foreach (var player in state.Players)
             {
@@ -66,7 +67,9 @@ public static class Simulation
                 log.Append($"{p.Name} ${p.Money}/sc {p.Score(state)}");
                 if (i < state.Players.Count - 1) log.Append("  |  ");
             }
-            log.Append($"   (+{produced.Yields.Count} yields, {unpowered} idle, {trades} trades, +{mulesMade} MULEs)\n");
+            log.Append($"   (+{produced.Yields.Count} yields, {unpowered} idle, {trades} trades, +{mulesMade} MULEs)");
+            if (evt is { } e) log.Append($"   NEWS: {e.Headline} - {e.Detail}");
+            log.Append('\n');
         }
 
         int owned = 0, mules = 0;

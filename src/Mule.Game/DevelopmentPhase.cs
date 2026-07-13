@@ -17,7 +17,7 @@ namespace Mule.Game;
 /// </summary>
 public sealed class DevelopmentPhase
 {
-    private enum Mode { Walking, Store, AiTurn, Auction, Summary, GameOver }
+    private enum Mode { Walking, Store, AiTurn, Auction, Summary, Event, GameOver }
 
     private const float TurnSeconds = 45f;
     private const float PawnSpeed = 260f; // pixels/second
@@ -36,6 +36,7 @@ public sealed class DevelopmentPhase
     private IReadOnlyList<ProductionResult> _lastProduction = Array.Empty<ProductionResult>();
     private int _lastUnpowered;
     private FoodUpkeep[] _lastUpkeep = Array.Empty<FoodUpkeep>();
+    private EventReport? _lastEvent;
 
     // AI turn playback
     private List<AiAction> _aiPlan = new();
@@ -75,6 +76,14 @@ public sealed class DevelopmentPhase
 
     /// <summary>Test hook: force the store open so verification tooling can capture it.</summary>
     public void DebugOpenStore() => _mode = Mode.Store;
+
+    /// <summary>Test hook: resolve and show a colony event bulletin.</summary>
+    public void DebugShowEvent()
+    {
+        _state.Month = 2; // past the first-month grace so an event fires
+        _lastEvent = ColonyEvents.Resolve(_state);
+        _mode = Mode.Event;
+    }
 
     /// <summary>Test hook: seed some MULEs with too little energy, then show the summary.</summary>
     public void DebugShowSummary()
@@ -129,6 +138,7 @@ public sealed class DevelopmentPhase
             case Mode.AiTurn: UpdateAiTurn(dt); break;
             case Mode.Auction: UpdateAuction(dt, keys); break;
             case Mode.Summary: UpdateSummary(keys); break;
+            case Mode.Event: UpdateEvent(keys); break;
             case Mode.GameOver: break;
         }
 
@@ -403,9 +413,25 @@ public sealed class DevelopmentPhase
         {
             _state.Month++;
             _lastUpkeep = Upkeep.ConsumeFood(_state); // eat before the new month's turns
-            _activeIndex = -1;
-            AdvanceToNextColonist();
+            _lastEvent = ColonyEvents.Resolve(_state);
+
+            if (_lastEvent.HasValue)
+                _mode = Mode.Event; // show the news bulletin, then start turns
+            else
+                StartNewMonthTurns();
         }
+    }
+
+    private void UpdateEvent(KeyboardState keys)
+    {
+        if (Pressed(keys, Keys.Enter) || Pressed(keys, Keys.Space))
+            StartNewMonthTurns();
+    }
+
+    private void StartNewMonthTurns()
+    {
+        _activeIndex = -1;
+        AdvanceToNextColonist();
     }
 
     private Vector2 TownCenter()
@@ -582,6 +608,7 @@ public sealed class DevelopmentPhase
     public void DrawModal(SpriteBatch batch, ShapeBatch shapes, SpriteFont font, int screenW, int screenH)
     {
         if (_mode == Mode.Store) DrawStore(batch, shapes, font, screenW, screenH);
+        else if (_mode == Mode.Event) DrawEvent(batch, shapes, font, screenW, screenH);
         else if (_mode == Mode.Summary) DrawSummary(batch, shapes, font, screenW, screenH, "Month Complete", true);
         else if (_mode == Mode.GameOver) DrawSummary(batch, shapes, font, screenW, screenH, "Game Over", false);
     }
@@ -626,6 +653,40 @@ public sealed class DevelopmentPhase
             batch.DrawString(font, $"Leading a {colonist.CarriedMule} MULE - walk it to your land and press Space.",
                 new Vector2(x, y), Palette.MuleColor(colonist.CarriedMule));
         }
+    }
+
+    private void DrawEvent(SpriteBatch batch, ShapeBatch shapes, SpriteFont font, int screenW, int screenH)
+    {
+        if (_lastEvent is not { } ev) return;
+
+        shapes.Fill(new Rectangle(0, 0, screenW, screenH), new Color(0, 0, 0, 170));
+
+        int w = 560, h = 260;
+        var panel = new Rectangle((screenW - w) / 2, (screenH - h) / 2, w, h);
+        shapes.Fill(panel, Palette.Panel);
+        shapes.Outline(panel, Palette.Grid, 2);
+
+        // A colored banner keys the mood: green for fortune, amber for trouble.
+        var accent = ev.IsGood ? Palette.Food : Palette.Energy;
+        shapes.Fill(new Rectangle(panel.X, panel.Y, panel.Width, 6), accent);
+
+        int x = panel.X + 28;
+        int y = panel.Y + 26;
+        batch.DrawString(font, $"COLONY NEWS  -  Month {_state.Month}", new Vector2(x, y), Palette.TextMuted);
+        y += 34;
+        batch.DrawString(font, ev.Headline, new Vector2(x, y), accent, 0f, Vector2.Zero, 1.6f, SpriteEffects.None, 0f);
+        y += 50;
+
+        // Affected-player swatch, if the event singled someone out.
+        if (ev.AffectedPlayerId >= 0)
+        {
+            var p = _state.PlayerById(ev.AffectedPlayerId);
+            if (p != null)
+                shapes.Fill(new Rectangle(x, y + 2, 12, 12), Palette.FromPacked(p.Color));
+        }
+        batch.DrawString(font, ev.Detail, new Vector2(x + (ev.AffectedPlayerId >= 0 ? 22 : 0), y), Palette.Text);
+
+        batch.DrawString(font, "Press Enter to continue", new Vector2(x, panel.Bottom - 40), Palette.TextMuted);
     }
 
     private void DrawSummary(SpriteBatch batch, ShapeBatch shapes, SpriteFont font, int screenW, int screenH, string title, bool cont)
