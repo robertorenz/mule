@@ -21,6 +21,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private bool _inSetup = true;
     private Starfield _starfield = null!;
     private Sfx _sfx = null!;
+    private Music _music = null!;
 
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
@@ -56,6 +57,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _setup = new SetupScreen();
         _starfield = new Starfield();
         _sfx = new Sfx();
+        _music = new Music();
+        _music.Play(); // title theme over the setup screen
 
         // Verification hooks skip setup and drive a default game directly.
         bool autoStart = Env("MULE_OPENSTORE") || Env("MULE_AUCTION") ||
@@ -88,6 +91,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _layout = new MapLayout(_state.Map, MapArea);
         _dev = new DevelopmentPhase(_state, _layout, _sfx);
         _inSetup = false;
+        _music.Stop(); // quiet the title theme once the colony begins
     }
 
     protected override void LoadContent()
@@ -125,6 +129,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
         {
             _setup = new SetupScreen();
             _inSetup = true;
+            _music.Play(); // back to the title theme
         }
 
         base.Update(gameTime);
