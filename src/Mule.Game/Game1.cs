@@ -20,6 +20,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private SetupScreen _setup = null!;
     private bool _inSetup = true;
     private KeyboardState _prevKeys;
+    private bool _confirmQuit; // showing the "quit to menu?" prompt over a paused game
     private float _time; // seconds elapsed, for ambient animation (water)
     private Starfield _starfield = null!;
     private Sfx _sfx = null!;
@@ -80,6 +81,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
             if (Env("MULE_AUCTION")) _dev.DebugStartAuction();
             if (Env("MULE_SUMMARY")) _dev.DebugShowSummary();
             if (Env("MULE_EVENT")) _dev.DebugShowEvent();
+            if (Env("MULE_QUITCONFIRM")) _confirmQuit = true;
         }
 
         base.Initialize();
@@ -93,6 +95,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _layout = new MapLayout(_state.Map, MapArea);
         _dev = new DevelopmentPhase(_state, _layout, _sfx);
         _inSetup = false;
+        _confirmQuit = false;
         _music.Stop(); // quiet the title theme once the colony begins
     }
 
@@ -110,8 +113,11 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _time += dt;
         _starfield.Update(dt);
 
-        // Edge-triggered so a single held Esc can't cascade (back to menu, then quit).
+        // Edge-triggered so a single held key can't cascade across states.
         bool escPressed = keys.IsKeyDown(Keys.Escape) && _prevKeys.IsKeyUp(Keys.Escape);
+        bool enterPressed = keys.IsKeyDown(Keys.Enter) && _prevKeys.IsKeyUp(Keys.Enter);
+        bool yPressed = keys.IsKeyDown(Keys.Y) && _prevKeys.IsKeyUp(Keys.Y);
+        bool nPressed = keys.IsKeyDown(Keys.N) && _prevKeys.IsKeyUp(Keys.N);
         bool backPressed = GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed;
         _prevKeys = keys;
 
@@ -123,10 +129,19 @@ public class Game1 : Microsoft.Xna.Framework.Game
             return;
         }
 
-        // In-game, Esc backs out to the title menu rather than quitting the app.
+        // While the quit prompt is up, the game is paused pending a yes/no answer.
+        if (_confirmQuit)
+        {
+            if (yPressed || enterPressed) { _confirmQuit = false; ReturnToMenu(); }
+            else if (nPressed || escPressed) { _confirmQuit = false; } // keep playing
+            base.Update(gameTime);
+            return;
+        }
+
+        // In-game, Esc asks before leaving to the title menu.
         if ((escPressed || backPressed) && _dev.CanQuitOnEscape)
         {
-            ReturnToMenu();
+            _confirmQuit = true;
             base.Update(gameTime);
             return;
         }
@@ -167,10 +182,32 @@ public class Game1 : Microsoft.Xna.Framework.Game
         DrawSidebar();
         _dev.DrawModal(_spriteBatch, _shapes, _font, WindowWidth, WindowHeight);
         DrawFooter();
+        if (_confirmQuit) DrawQuitConfirm();
 
         _spriteBatch.End();
         CaptureIfRequested();
         base.Draw(gameTime);
+    }
+
+    private void DrawQuitConfirm()
+    {
+        _shapes.Fill(new Rectangle(0, 0, WindowWidth, WindowHeight), new Color(0, 0, 0, 180));
+
+        int w = 460, h = 190;
+        var panel = new Rectangle((WindowWidth - w) / 2, (WindowHeight - h) / 2, w, h);
+        _shapes.Fill(panel, Palette.Panel);
+        _shapes.Outline(panel, Palette.Grid, 2);
+
+        int x = panel.X + 28;
+        int y = panel.Y + 24;
+        _spriteBatch.DrawString(_font, "Quit to menu?", new Vector2(x, y), Palette.Text, 0f,
+            Vector2.Zero, 1.4f, SpriteEffects.None, 0f);
+        y += 40;
+        _spriteBatch.DrawString(_font, "This game will be abandoned.", new Vector2(x, y), Palette.TextMuted);
+        y += 44;
+        _spriteBatch.DrawString(_font, "Enter / Y   -   quit to menu", new Vector2(x, y), Palette.Crystite);
+        y += 26;
+        _spriteBatch.DrawString(_font, "Esc / N     -   keep playing", new Vector2(x, y), Palette.Food);
     }
 
     private void CaptureIfRequested()
