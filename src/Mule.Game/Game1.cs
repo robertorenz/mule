@@ -245,13 +245,15 @@ public class Game1 : Microsoft.Xna.Framework.Game
             _layout.Cell * _layout.Width, _layout.Cell * _layout.Height);
         _shapes.Fill(board, BoardLand);
         DrawRiverBackground(board);
+        DrawMountainBackground();
 
         foreach (var plot in _state.Map.AllPlots())
         {
             var rect = _layout.PlotRect(plot.X, plot.Y);
 
-            // Land and town squares are opaque; river squares stay clear over the water.
-            if (plot.Terrain != Terrain.River)
+            // Plains and town are opaque; river and mountain squares stay clear so the
+            // background scene shows through beneath the grid.
+            if (!IsBackdrop(plot.Terrain))
                 _shapes.Fill(rect, Palette.TerrainColor(plot.Terrain));
 
             if (plot.Terrain == Terrain.Town)
@@ -271,7 +273,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
             }
             else
             {
-                _shapes.Outline(rect, plot.Terrain == Terrain.River ? WaterEdge : Palette.Grid, 1);
+                Color edge = plot.Terrain == Terrain.River ? WaterEdge
+                           : IsMountain(plot.Terrain) ? MountainEdge : Palette.Grid;
+                _shapes.Outline(rect, edge, 1);
             }
 
             if (plot.HasMule)
@@ -289,6 +293,53 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private static readonly Color WaterBank  = new(0x2C, 0x55, 0x66);
     private static readonly Color WaterGlint = new(0x8A, 0xC0, 0xD2);
     private static readonly Color WaterEdge  = new(0x35, 0x60, 0x72);
+    private static readonly Color MountainGround = new(0x2B, 0x27, 0x22);
+    private static readonly Color MountainRock   = new(0x52, 0x49, 0x3D);
+    private static readonly Color MountainSnow   = new(0xCC, 0xD4, 0xDB);
+    private static readonly Color MountainEdge   = new(0x47, 0x3F, 0x34);
+
+    private static bool IsMountain(Terrain t) =>
+        t is Terrain.Mountain1 or Terrain.Mountain2 or Terrain.Mountain3;
+
+    private static bool IsBackdrop(Terrain t) => t == Terrain.River || IsMountain(t);
+
+    /// <summary>
+    /// Draws the mountain ranges as a background layer: each mountain plot gets rocky
+    /// ground and a couple of peaks (one snow-capped), so adjacent plots read as a
+    /// continuous range with the grid squares layered over them.
+    /// </summary>
+    private void DrawMountainBackground()
+    {
+        foreach (var plot in _state.Map.AllPlots())
+        {
+            if (!IsMountain(plot.Terrain)) continue;
+            var cell = _layout.FullRect(plot.X, plot.Y);
+            _shapes.Fill(cell, MountainGround);
+
+            // Deterministic per-plot variation so peaks differ but never flicker.
+            float v1 = ((plot.X * 7 + plot.Y * 13) % 5) / 5f;
+            float v2 = ((plot.X * 11 + plot.Y * 5) % 5) / 5f;
+            DrawPeak(cell, 0.32f, 0.36f + v1 * 0.16f, 0.62f, snow: false);
+            DrawPeak(cell, 0.66f, 0.20f + v2 * 0.16f, 0.74f, snow: true);
+        }
+    }
+
+    private void DrawPeak(Rectangle cell, float apexFracX, float apexFracY, float baseWidthFrac, bool snow)
+    {
+        float apexX = cell.Left + cell.Width * apexFracX;
+        float apexY = cell.Top + cell.Height * apexFracY;
+        float baseY = cell.Bottom;
+        float baseW = cell.Width * baseWidthFrac;
+        float snowLimit = apexY + cell.Height * 0.16f;
+
+        for (int y = (int)apexY; y < baseY; y++)
+        {
+            float f = (y - apexY) / (baseY - apexY);
+            float w = baseW * f;
+            var color = (snow && y < snowLimit) ? MountainSnow : MountainRock;
+            _shapes.Fill(apexX - w / 2f, y, w, 1, color);
+        }
+    }
 
     /// <summary>
     /// Draws a continuous, gently winding river down the town column as a background
