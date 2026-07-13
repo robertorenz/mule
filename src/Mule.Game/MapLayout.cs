@@ -29,6 +29,10 @@ public readonly struct MapLayout
     public Rectangle PlotRect(int x, int y) =>
         new(OriginX + x * Cell, OriginY + y * Cell, Cell - 2, Cell - 2);
 
+    /// <summary>The full cell with no inter-tile gap — used so water tiles connect.</summary>
+    public Rectangle FullRect(int x, int y) =>
+        new(OriginX + x * Cell, OriginY + y * Cell, Cell, Cell);
+
     public Vector2 PlotCenter(int x, int y) =>
         new(OriginX + x * Cell + Cell / 2f, OriginY + y * Cell + Cell / 2f);
 

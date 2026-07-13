@@ -20,6 +20,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private SetupScreen _setup = null!;
     private bool _inSetup = true;
     private KeyboardState _prevKeys;
+    private float _time; // seconds elapsed, for ambient animation (water)
     private Starfield _starfield = null!;
     private Sfx _sfx = null!;
     private Music _music = null!;
@@ -106,6 +107,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
     {
         var keys = Keyboard.GetState();
         float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _time += dt;
         _starfield.Update(dt);
 
         // Edge-triggered so a single held Esc can't cascade (back to menu, then quit).
@@ -202,7 +204,11 @@ public class Game1 : Microsoft.Xna.Framework.Game
         foreach (var plot in _state.Map.AllPlots())
         {
             var rect = _layout.PlotRect(plot.X, plot.Y);
-            _shapes.Fill(rect, Palette.TerrainColor(plot.Terrain));
+
+            if (plot.Terrain == Terrain.River)
+                DrawWater(_layout.FullRect(plot.X, plot.Y)); // fill the whole cell so water joins up
+            else
+                _shapes.Fill(rect, Palette.TerrainColor(plot.Terrain));
 
             if (plot.Terrain == Terrain.Town)
             {
@@ -218,9 +224,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
                 if (owner != null)
                     _shapes.Outline(rect, Palette.FromPacked(owner.Color), 3);
             }
-            else
+            else if (plot.Terrain != Terrain.River)
             {
-                _shapes.Outline(rect, Palette.Grid, 1);
+                _shapes.Outline(rect, Palette.Grid, 1); // rivers have no grid line, so they flow
             }
 
             if (plot.HasMule)
@@ -229,6 +235,34 @@ public class Game1 : Microsoft.Xna.Framework.Game
                 var dot = new Rectangle(rect.Center.X - d / 2, rect.Center.Y - d / 2, d, d);
                 _shapes.Fill(dot, Palette.MuleColor(plot.Mule));
                 _shapes.Outline(dot, Palette.Background, 2);
+            }
+        }
+    }
+
+    private static readonly Color WaterDeep = new(0x1B, 0x3E, 0x4E);
+    private static readonly Color WaterRipple = new(0x4C, 0x82, 0x99);
+    private static readonly Color WaterGlint = new(0x7E, 0xB6, 0xC8);
+
+    /// <summary>Draws a river cell as animated water: a deep base with drifting ripples.</summary>
+    private void DrawWater(Rectangle cell)
+    {
+        _shapes.Fill(cell, WaterDeep);
+
+        // A few horizontal ripple lines that undulate and drift over time.
+        int rows = Math.Max(3, cell.Height / 14);
+        int seg = 3;
+        for (int r = 0; r < rows; r++)
+        {
+            float baseY = cell.Top + cell.Height * (r + 0.5f) / rows;
+            float rowPhase = r * 1.7f;
+            bool glint = r % 2 == 0;
+            for (int x = cell.Left; x < cell.Right; x += seg)
+            {
+                float wave = MathF.Sin(x * 0.16f + _time * 1.8f + rowPhase);
+                float y = baseY + wave * 2.4f;
+                // Fade ripple in and out along its length for a soft, watery look.
+                float a = 0.35f + 0.4f * (0.5f + 0.5f * MathF.Sin(x * 0.09f - _time * 1.3f + rowPhase));
+                _shapes.Fill(x, y, seg, 1.7f, (glint ? WaterGlint : WaterRipple) * a);
             }
         }
     }
