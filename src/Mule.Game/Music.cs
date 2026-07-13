@@ -12,22 +12,23 @@ namespace Mule.Game;
 public sealed class Music : IDisposable
 {
     private const int Rate = 22050;
-    private const double BeatDur = 0.33;  // seconds per quarter note (~182 BPM feel)
-    private const double Swing = 0.62;    // on-beat eighth takes 62% of the beat
+    private const double BeatDur = 0.30;  // seconds per quarter note (~200 BPM feel, upbeat)
+    private const double Swing = 0.63;    // on-beat eighth takes 63% of the beat
 
     private enum Osc { Square, Triangle }
 
     // Lead (square). (MIDI, length in eighths); 0 = rest. 64 eighths = 8 bars.
+    // Built around a four-note hook (G-C6-G-E) that recurs so it sticks in the ear.
     private static readonly (int midi, int len)[] Lead =
     {
-        (72,1),(76,1),(79,1),(76,1),(72,1),(76,1),(79,2),                 // bar 1  (C)
-        (84,1),(79,1),(76,1),(79,1),(84,2),(79,2),                        // bar 2  (C)
-        (77,1),(81,1),(84,1),(81,1),(77,2),(72,2),                        // bar 3  (F)
-        (72,1),(76,1),(79,1),(84,1),(79,2),(76,2),                        // bar 4  (C)
-        (79,1),(83,1),(86,1),(83,1),(79,2),(74,2),                        // bar 5  (G)
-        (77,1),(81,1),(84,1),(81,1),(77,1),(74,1),(72,2),                 // bar 6  (F)
-        (72,1),(76,1),(79,1),(76,1),(72,1),(67,1),(72,2),                 // bar 7  (C)
-        (74,1),(71,1),(74,1),(79,1),(74,2),(0,2),                         // bar 8  (G, turnaround)
+        (79,1),(84,1),(79,1),(76,1),(72,2),(74,2),                        // bar 1  hook + turn
+        (79,1),(84,1),(79,1),(76,1),(76,2),(72,2),                        // bar 2  hook (repeat)
+        (81,1),(84,1),(81,1),(77,1),(77,2),(81,2),                        // bar 3  hook up (F)
+        (79,1),(84,1),(79,1),(76,1),(79,2),(0,2),                         // bar 4  hook + lift
+        (83,1),(86,1),(83,1),(79,1),(79,2),(74,2),                        // bar 5  hook up (G)
+        (81,1),(84,1),(81,1),(77,1),(74,2),(77,2),                        // bar 6  (F)
+        (79,1),(84,1),(79,1),(76,1),(72,2),(76,2),                        // bar 7  hook (C)
+        (74,1),(71,1),(74,1),(79,1),(72,4),                               // bar 8  turnaround to C
     };
 
     // Boogie-woogie bass (triangle): root-3-5-6-b7-6-5-3 per bar — the shuffle engine.
@@ -43,7 +44,8 @@ public sealed class Music : IDisposable
     {
         try
         {
-            var theme = Build();
+            // Prefer a user-supplied track if one is present; otherwise synthesize.
+            var theme = TryLoadExternal() ?? Build();
             _instance = theme.CreateInstance();
             _instance.IsLooped = true;
             _instance.Volume = 0.34f;
@@ -53,6 +55,32 @@ public sealed class Music : IDisposable
         {
             _ready = false;
         }
+    }
+
+    /// <summary>
+    /// Loads a user-provided WAV to use as the title music, if one is found. Looked for
+    /// at the MULE_MUSIC path, then "music/title.wav" beside the executable or in the
+    /// working directory. This lets you drop in your own theme without any code change.
+    /// </summary>
+    private static SoundEffect? TryLoadExternal()
+    {
+        var candidates = new System.Collections.Generic.List<string>();
+        var env = Environment.GetEnvironmentVariable("MULE_MUSIC");
+        if (!string.IsNullOrEmpty(env)) candidates.Add(env);
+        candidates.Add(System.IO.Path.Combine(AppContext.BaseDirectory, "music", "title.wav"));
+        candidates.Add(System.IO.Path.Combine(Environment.CurrentDirectory, "music", "title.wav"));
+
+        foreach (var path in candidates)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(path)) continue;
+                using var fs = System.IO.File.OpenRead(path);
+                return SoundEffect.FromStream(fs); // WAV (PCM)
+            }
+            catch { /* unreadable/unsupported file — fall through to the next */ }
+        }
+        return null;
     }
 
     public void Play()
