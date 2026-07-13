@@ -13,5 +13,14 @@ if (System.Environment.GetEnvironmentVariable("MULE_NETTEST") != null)
     return;
 }
 
+// Export the title theme to a WAV for auditioning: MULE_DUMPMUSIC=<path>.
+var dumpMusic = System.Environment.GetEnvironmentVariable("MULE_DUMPMUSIC");
+if (dumpMusic != null)
+{
+    Mule.Game.Music.WriteWav(dumpMusic);
+    System.Console.WriteLine($"Wrote title theme to {dumpMusic}");
+    return;
+}
+
 using var game = new Mule.Game.Game1();
 game.Run();
