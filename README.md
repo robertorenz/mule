@@ -67,6 +67,13 @@ On launch you land on the setup screen: pick the number of players, how many are
 human, difficulty (which sets starting cash), game length, and the map seed, then
 press Enter to start. Everything else defaults sensibly.
 
+### Custom title music
+
+The setup screen plays a built-in chiptune theme by default. To use your own track,
+drop a 16-bit PCM WAV at `src/Mule.Game/music/title.wav` (or point `MULE_MUSIC` at
+any WAV) and the game plays it instead. Convert other formats with ffmpeg, e.g.
+`ffmpeg -i yourtune.flac -acodec pcm_s16le -ar 44100 src/Mule.Game/music/title.wav`.
+
 ### Controls
 
 | Key | Action |

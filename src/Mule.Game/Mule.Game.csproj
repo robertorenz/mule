@@ -30,4 +30,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Mule.Core\Mule.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Optional user-supplied title music, copied next to the game if present. -->
+    <None Include="music\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

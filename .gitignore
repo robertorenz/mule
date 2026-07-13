@@ -17,3 +17,7 @@ Content/bin/
 # OS
 Thumbs.db
 .DS_Store
+
+# Stray source audio dropped in the repo root (the game uses src/Mule.Game/music/)
+/*.flac
+/*.mp3

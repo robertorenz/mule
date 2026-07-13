@@ -40,29 +40,55 @@ public sealed class Music : IDisposable
     private readonly SoundEffectInstance? _instance;
     private readonly bool _ready;
 
+    /// <summary>Which track is playing: the external file path, or "synthesized".</summary>
+    public string Source { get; private set; } = "none";
+
     public Music()
     {
         try
         {
-            // Prefer a user-supplied track if one is present; otherwise synthesize.
-            var theme = TryLoadExternal() ?? Build();
+            SoundEffect theme;
+            var external = FindExternalPath();
+            if (external != null)
+            {
+                using var fs = System.IO.File.OpenRead(external);
+                theme = SoundEffect.FromStream(fs); // WAV (PCM)
+                Source = "external: " + external;
+            }
+            else
+            {
+                theme = Build();
+                Source = "synthesized";
+            }
+
             _instance = theme.CreateInstance();
             _instance.IsLooped = true;
-            _instance.Volume = 0.34f;
+            _instance.Volume = external != null ? 0.6f : 0.34f;
             _ready = true;
         }
-        catch
+        catch (Exception ex)
         {
-            _ready = false;
+            // An external file that won't load shouldn't leave us silent — fall back.
+            try
+            {
+                var fx = Build();
+                _instance = fx.CreateInstance();
+                _instance.IsLooped = true;
+                _instance.Volume = 0.34f;
+                _ready = true;
+                Source = $"synthesized (fallback: {ex.Message})";
+            }
+            catch { _ready = false; }
         }
+
+        Console.WriteLine($"[Music] {Source}");
     }
 
     /// <summary>
-    /// Loads a user-provided WAV to use as the title music, if one is found. Looked for
-    /// at the MULE_MUSIC path, then "music/title.wav" beside the executable or in the
-    /// working directory. This lets you drop in your own theme without any code change.
+    /// Finds a user-provided WAV to use as title music: the MULE_MUSIC path, then
+    /// "music/title.wav" beside the executable or in the working directory.
     /// </summary>
-    private static SoundEffect? TryLoadExternal()
+    private static string? FindExternalPath()
     {
         var candidates = new System.Collections.Generic.List<string>();
         var env = Environment.GetEnvironmentVariable("MULE_MUSIC");
@@ -71,15 +97,8 @@ public sealed class Music : IDisposable
         candidates.Add(System.IO.Path.Combine(Environment.CurrentDirectory, "music", "title.wav"));
 
         foreach (var path in candidates)
-        {
-            try
-            {
-                if (!System.IO.File.Exists(path)) continue;
-                using var fs = System.IO.File.OpenRead(path);
-                return SoundEffect.FromStream(fs); // WAV (PCM)
-            }
-            catch { /* unreadable/unsupported file — fall through to the next */ }
-        }
+            if (System.IO.File.Exists(path))
+                return path;
         return null;
     }
 
