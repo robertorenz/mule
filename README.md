@@ -100,6 +100,25 @@ verifying the simulation logic:
 MULE_SIMULATE=1 dotnet run --project src/Mule.Game
 ```
 
+## Building release artifacts
+
+To produce distributable builds (a portable single-file exe and a Windows installer):
+
+```powershell
+pwsh scripts\publish.ps1
+```
+
+This writes:
+
+- `publish\portable\MULE-Colony.exe` — a **single, self-contained, compressed
+  executable**. No .NET install required; just run it.
+- `publish\installer\MULE-Colony-Setup.exe` — a **Windows installer** (built with
+  [Inno Setup 6](https://jrsoftware.org/isinfo.php)) with Start Menu and optional
+  desktop shortcuts, installable without admin rights.
+
+Both are self-contained (win-x64) and bundle the content and title music. Attach
+them to a GitHub Release for sharing.
+
 ## License
 
 Fan project for educational purposes. *M.U.L.E.* is a trademark of its
