@@ -19,6 +19,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     private SetupScreen _setup = null!;
     private bool _inSetup = true;
+    private KeyboardState _prevKeys;
     private Starfield _starfield = null!;
     private Sfx _sfx = null!;
     private Music _music = null!;
@@ -107,18 +108,24 @@ public class Game1 : Microsoft.Xna.Framework.Game
         float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _starfield.Update(dt);
 
+        // Edge-triggered so a single held Esc can't cascade (back to menu, then quit).
+        bool escPressed = keys.IsKeyDown(Keys.Escape) && _prevKeys.IsKeyUp(Keys.Escape);
+        bool backPressed = GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed;
+        _prevKeys = keys;
+
         if (_inSetup)
         {
-            if (keys.IsKeyDown(Keys.Escape)) Exit();
+            if (escPressed) Exit(); // Esc quits only from the title menu
             else if (_setup.Update(keys, _sfx)) StartGame(_setup.BuildConfig());
             base.Update(gameTime);
             return;
         }
 
-        if (_dev.CanQuitOnEscape &&
-            (keys.IsKeyDown(Keys.Escape) || GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed))
+        // In-game, Esc backs out to the title menu rather than quitting the app.
+        if ((escPressed || backPressed) && _dev.CanQuitOnEscape)
         {
-            Exit();
+            ReturnToMenu();
+            base.Update(gameTime);
             return;
         }
 
@@ -126,13 +133,16 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _dev.Update((float)gameTime.ElapsedGameTime.TotalSeconds, keys, _layout);
 
         if (_dev.RestartRequested)
-        {
-            _setup = new SetupScreen();
-            _inSetup = true;
-            _music.Play(); // back to the title theme
-        }
+            ReturnToMenu();
 
         base.Update(gameTime);
+    }
+
+    private void ReturnToMenu()
+    {
+        _setup = new SetupScreen();
+        _inSetup = true;
+        _music.Play(); // back to the title theme
     }
 
     protected override void Draw(GameTime gameTime)
@@ -278,8 +288,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private void DrawFooter()
     {
         string hint = _dev.IsAuction
-            ? "Up/Down: raise or lower your price   |   trades fire when a buyer meets a seller   |   Enter: skip   |   Esc: quit"
-            : "WASD/Arrows: move   |   Space: claim land / enter store / install MULE   |   Enter: end turn   |   Esc: quit";
+            ? "Up/Down: raise or lower your price   |   trades fire when a buyer meets a seller   |   Enter: skip   |   Esc: menu"
+            : "WASD/Arrows: move   |   Space: claim land / enter store / install MULE   |   Enter: end turn   |   Esc: menu";
         _spriteBatch.DrawString(_font, hint, new Vector2(Margin, WindowHeight - 28), Palette.TextMuted);
     }
 
