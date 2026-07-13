@@ -23,6 +23,7 @@ public sealed class DevelopmentPhase
     private const float PawnSpeed = 260f; // pixels/second
 
     private readonly GameState _state;
+    private readonly Sfx _sfx;
 
     private Mode _mode = Mode.Walking;
     private int _activeIndex = -1;
@@ -49,13 +50,19 @@ public sealed class DevelopmentPhase
     private Queue<Resource> _auctionQueue = new();
     private readonly int _humanId;
 
+    // Auction visual effects (trade pulses and floating gain text).
+    private sealed class Fx { public Vector2 Pos; public float Age; public float Life; public string? Text; public Color Color; }
+    private readonly List<Fx> _fx = new();
+    private int _lastTradeCount;
+
     private KeyboardState _prevKeys;
     private MapLayout _layout;
 
-    public DevelopmentPhase(GameState state, MapLayout layout)
+    public DevelopmentPhase(GameState state, MapLayout layout, Sfx sfx)
     {
         _state = state;
         _layout = layout;
+        _sfx = sfx;
 
         _humanId = -1;
         foreach (var p in state.Players)
@@ -213,6 +220,7 @@ public sealed class DevelopmentPhase
         else
             result = ActionResult.Fail("Another colonist owns this plot.");
 
+        if (result.Ok) _sfx.Play("pop");
         Flash(result.Message);
     }
 
@@ -246,15 +254,19 @@ public sealed class DevelopmentPhase
             _mode = Mode.Walking;
             return;
         }
-        if (Pressed(keys, Keys.Up)) _storeSelection = (_storeSelection - 1 + menu.Count) % menu.Count;
-        if (Pressed(keys, Keys.Down)) _storeSelection = (_storeSelection + 1) % menu.Count;
+        if (Pressed(keys, Keys.Up)) { _storeSelection = (_storeSelection - 1 + menu.Count) % menu.Count; _sfx.Play("move"); }
+        if (Pressed(keys, Keys.Down)) { _storeSelection = (_storeSelection + 1) % menu.Count; _sfx.Play("move"); }
 
         for (int i = 0; i < menu.Count; i++)
             if (Pressed(keys, Keys.D1 + i) || Pressed(keys, Keys.NumPad1 + i))
                 _storeSelection = i;
 
         if (Pressed(keys, Keys.Enter) || Pressed(keys, Keys.Space))
-            Flash(menu[_storeSelection].Act(_state, colonist).Message);
+        {
+            var result = menu[_storeSelection].Act(_state, colonist);
+            if (result.Ok) _sfx.Play("confirm");
+            Flash(result.Message);
+        }
     }
 
     // ---- AI turn playback --------------------------------------------------
@@ -377,6 +389,8 @@ public sealed class DevelopmentPhase
             return;
         }
         _auction = Auction.Create(_state, _auctionQueue.Dequeue());
+        _lastTradeCount = 0;
+        _fx.Clear();
         _mode = Mode.Auction;
     }
 
@@ -390,6 +404,13 @@ public sealed class DevelopmentPhase
         _auction.SetHumanIntent(_humanId, dir);
 
         _auction.Update(_state, dt);
+        SpawnTradeEffects();
+
+        for (int i = _fx.Count - 1; i >= 0; i--)
+        {
+            _fx[i].Age += dt;
+            if (_fx[i].Age >= _fx[i].Life) _fx.RemoveAt(i);
+        }
 
         if (Pressed(keys, Keys.Enter))       // let the player skip ahead
             _auction = null;
@@ -400,12 +421,35 @@ public sealed class DevelopmentPhase
             BeginNextAuction();
     }
 
+    private void SpawnTradeEffects()
+    {
+        if (_auction == null || _auction.TradeCount == _lastTradeCount || _auction.LastTrade is not { } lt)
+            return;
+        _lastTradeCount = _auction.TradeCount;
+
+        var chart = AuctionChart();
+        var pos = new Vector2(chart.Center.X, PriceToY(chart, lt.Price));
+        var accent = Palette.ResourceColor(_auction.Resource);
+
+        _fx.Add(new Fx { Pos = pos, Life = 0.5f, Color = accent });                        // pulse
+        _fx.Add(new Fx { Pos = pos, Life = 0.9f, Color = Palette.Food, Text = $"+${lt.Price}" }); // gain
+        _sfx.Play("trade", 0.3f);
+    }
+
+    private Rectangle AuctionChart()
+    {
+        var canvas = _layout.Bounds;
+        const int gutter = 96;
+        return new Rectangle(canvas.Left + gutter, canvas.Top + 48, canvas.Width - gutter - 12, canvas.Height - 92);
+    }
+
     private void EndMonth()
     {
         if (_state.Month >= _state.TotalMonths)
         {
             _state.Phase = GamePhase.GameOver;
             _mode = Mode.GameOver;
+            _sfx.Play("gameover");
         }
         else
         {
@@ -423,7 +467,10 @@ public sealed class DevelopmentPhase
             _lastEvent = ColonyEvents.Resolve(_state);
 
             if (_lastEvent.HasValue)
+            {
+                _sfx.Play("event");
                 _mode = Mode.Event; // show the news bulletin, then start turns
+            }
             else
                 StartNewMonthTurns();
         }
@@ -538,8 +585,7 @@ public sealed class DevelopmentPhase
         shapes.Fill(new Rectangle(canvas.Left, canvas.Top + 26, (int)(canvas.Width * tpct), 5), accent);
 
         // Price chart area (leave a left gutter for axis labels).
-        int gutter = 96;
-        var chart = new Rectangle(canvas.Left + gutter, canvas.Top + 48, canvas.Width - gutter - 12, canvas.Height - 92);
+        var chart = AuctionChart();
         shapes.Fill(chart, Palette.Panel);
         shapes.Outline(chart, Palette.Grid, 1);
 
@@ -565,6 +611,16 @@ public sealed class DevelopmentPhase
 
         DrawTraderColumn(batch, shapes, font, buyers, buyerX, chart);
         DrawTraderColumn(batch, shapes, font, sellers, sellerX, chart);
+
+        // Trade effects: expanding pulse rings and rising "+$" gain text.
+        foreach (var fx in _fx)
+        {
+            float t = Math.Clamp(fx.Age / fx.Life, 0f, 1f);
+            if (fx.Text == null)
+                shapes.FillCircle(fx.Pos.X, fx.Pos.Y, 8f + t * 34f, fx.Color * (0.5f * (1f - t)));
+            else
+                batch.DrawString(font, fx.Text, new Vector2(fx.Pos.X + 6, fx.Pos.Y - t * 26f), fx.Color * (1f - t));
+        }
 
         // Last-trade ticker.
         if (_auction.LastTrade is { } lt)

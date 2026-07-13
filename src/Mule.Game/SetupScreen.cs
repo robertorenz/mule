@@ -45,20 +45,20 @@ public sealed class SetupScreen
     }
 
     /// <summary>Returns true when the player has confirmed and the game should start.</summary>
-    public bool Update(KeyboardState keys)
+    public bool Update(KeyboardState keys, Sfx sfx)
     {
         bool start = false;
 
-        if (Pressed(keys, Keys.Down)) _row = (_row + 1) % (int)Row.COUNT;
-        if (Pressed(keys, Keys.Up)) _row = (_row - 1 + (int)Row.COUNT) % (int)Row.COUNT;
+        if (Pressed(keys, Keys.Down)) { _row = (_row + 1) % (int)Row.COUNT; sfx.Play("move"); }
+        if (Pressed(keys, Keys.Up)) { _row = (_row - 1 + (int)Row.COUNT) % (int)Row.COUNT; sfx.Play("move"); }
 
         int dir = 0;
         if (Pressed(keys, Keys.Right)) dir = 1;
         if (Pressed(keys, Keys.Left)) dir = -1;
-        if (dir != 0) Adjust((Row)_row, dir);
+        if (dir != 0) { Adjust((Row)_row, dir); sfx.Play("move"); }
 
-        if (Pressed(keys, Keys.R)) _seed = _rng.Next(1, 9999);
-        if (Pressed(keys, Keys.Enter) || Pressed(keys, Keys.Space)) start = true;
+        if (Pressed(keys, Keys.R)) { _seed = _rng.Next(1, 9999); sfx.Play("move"); }
+        if (Pressed(keys, Keys.Enter) || Pressed(keys, Keys.Space)) { start = true; sfx.Play("confirm"); }
 
         _prev = keys;
         return start;
@@ -99,8 +99,15 @@ public sealed class SetupScreen
 
     private bool Pressed(KeyboardState keys, Keys key) => keys.IsKeyDown(key) && _prev.IsKeyUp(key);
 
-    public void Draw(SpriteBatch batch, ShapeBatch shapes, SpriteFont font, int screenW, int screenH)
+    public void Draw(SpriteBatch batch, ShapeBatch shapes, SpriteFont font, Starfield stars, int screenW, int screenH)
     {
+        // Backdrop: twinkling stars and a planet rising from the lower-right.
+        stars.Draw(shapes, new Rectangle(0, 0, screenW, screenH));
+        float pcx = screenW * 0.82f, pcy = screenH * 1.12f, pr = screenH * 0.55f;
+        shapes.FillCircle(pcx, pcy, pr, new Color(0x22, 0x3A, 0x44));          // planet body
+        shapes.FillCircle(pcx - pr * 0.28f, pcy - pr * 0.30f, pr * 0.82f, new Color(0x2C, 0x4C, 0x59)); // lit side
+        shapes.FillCircle(pcx - pr * 0.45f, pcy - pr * 0.50f, pr * 0.5f, new Color(0x35, 0x5E, 0x6E)); // highlight
+
         // Title block.
         var titleSize = font.MeasureString("M . U . L . E .") * 2.4f;
         batch.DrawString(font, "M . U . L . E .",

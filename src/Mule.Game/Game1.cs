@@ -19,6 +19,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     private SetupScreen _setup = null!;
     private bool _inSetup = true;
+    private Starfield _starfield = null!;
+    private Sfx _sfx = null!;
 
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
@@ -52,6 +54,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
     protected override void Initialize()
     {
         _setup = new SetupScreen();
+        _starfield = new Starfield();
+        _sfx = new Sfx();
 
         // Verification hooks skip setup and drive a default game directly.
         bool autoStart = Env("MULE_OPENSTORE") || Env("MULE_AUCTION") ||
@@ -82,7 +86,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
     {
         _state = GameFactory.NewGame(cfg.Seed, cfg.Humans, cfg.TotalPlayers, cfg.Months, cfg.StartMoney);
         _layout = new MapLayout(_state.Map, MapArea);
-        _dev = new DevelopmentPhase(_state, _layout);
+        _dev = new DevelopmentPhase(_state, _layout, _sfx);
         _inSetup = false;
     }
 
@@ -96,11 +100,13 @@ public class Game1 : Microsoft.Xna.Framework.Game
     protected override void Update(GameTime gameTime)
     {
         var keys = Keyboard.GetState();
+        float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _starfield.Update(dt);
 
         if (_inSetup)
         {
             if (keys.IsKeyDown(Keys.Escape)) Exit();
-            else if (_setup.Update(keys)) StartGame(_setup.BuildConfig());
+            else if (_setup.Update(keys, _sfx)) StartGame(_setup.BuildConfig());
             base.Update(gameTime);
             return;
         }
@@ -131,7 +137,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
         if (_inSetup)
         {
-            _setup.Draw(_spriteBatch, _shapes, _font, WindowWidth, WindowHeight);
+            _setup.Draw(_spriteBatch, _shapes, _font, _starfield, WindowWidth, WindowHeight);
             _spriteBatch.End();
             CaptureIfRequested();
             base.Draw(gameTime);

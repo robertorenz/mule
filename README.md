@@ -27,6 +27,8 @@ Early scaffolding. The foundation is in place and runnable:
   play again from the end screen
 - ✅ Smarter AI — stays energy- and food-self-sufficient and bids the auction with
   reservation prices (won't dump goods below the store price or overpay above it)
+- ✅ Presentation polish — starfield + planet title screen, auction trade-flash and
+  floating gain effects, and procedural sound effects (no asset files)
 - ⬜ Networked multiplayer
 
 ## Architecture
