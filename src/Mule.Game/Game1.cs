@@ -73,7 +73,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
                 TotalPlayers = 4,
                 Humans = Env("MULE_ALLAI") ? 0 : 1,
                 Months = 12,
-                Seed = 1983,
+                Seed = int.TryParse(Environment.GetEnvironmentVariable("MULE_SEED"), out var s) ? s : 1983,
                 StartMoney = 1000,
                 DifficultyName = "Standard",
             });
