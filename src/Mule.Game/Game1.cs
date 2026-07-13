@@ -55,6 +55,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _dev = new DevelopmentPhase(_state, _layout);
         if (Environment.GetEnvironmentVariable("MULE_OPENSTORE") != null)
             _dev.DebugOpenStore();
+        if (Environment.GetEnvironmentVariable("MULE_AUCTION") != null)
+            _dev.DebugStartAuction();
         base.Initialize();
     }
 
@@ -87,7 +89,7 @@ public class Game1 : Microsoft.Xna.Framework.Game
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
 
         DrawHeader();
-        DrawMap();
+        if (!_dev.IsAuction) DrawMap();
         _dev.DrawWorld(_spriteBatch, _shapes, _font);
         DrawSidebar();
         _dev.DrawModal(_spriteBatch, _shapes, _font, WindowWidth, WindowHeight);
@@ -210,7 +212,9 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     private void DrawFooter()
     {
-        string hint = "WASD/Arrows: move   |   Space: claim land / enter store / install MULE   |   Enter: end turn   |   Esc: quit";
+        string hint = _dev.IsAuction
+            ? "Up/Down: raise or lower your price   |   trades fire when a buyer meets a seller   |   Enter: skip   |   Esc: quit"
+            : "WASD/Arrows: move   |   Space: claim land / enter store / install MULE   |   Enter: end turn   |   Esc: quit";
         _spriteBatch.DrawString(_font, hint, new Vector2(Margin, WindowHeight - 28), Palette.TextMuted);
     }
 

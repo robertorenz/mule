@@ -25,6 +25,22 @@ public sealed class Store
     public void AddStock(Resource r, int amount) => _stock[r] += amount;
     public void RemoveStock(Resource r, int amount) => _stock[r] -= amount;
 
+    private int _smithoreBuffer;
+
+    /// <summary>
+    /// Feed Smithore the store bought at auction into MULE manufacturing. Every two
+    /// units of Smithore yields one new MULE, restocking the store's supply.
+    /// Returns how many MULEs were minted.
+    /// </summary>
+    public int RefineSmithore(int units)
+    {
+        _smithoreBuffer += units;
+        int made = _smithoreBuffer / 2;
+        _smithoreBuffer %= 2;
+        MulesAvailable += made;
+        return made;
+    }
+
     /// <summary>Cost of outfitting a fresh MULE for a given resource.</summary>
     public int OutfitSurcharge(MuleOutfit outfit) => outfit switch
     {

@@ -16,8 +16,10 @@ Early scaffolding. The foundation is in place and runnable:
 - ✅ Real-time Development phase — walk the colonist, claim land, town store, install MULEs
 - ✅ Production resolution and month/turn loop with end-game standings
 - ✅ AI opponents — evaluate the best plot/resource, claim, buy, and install MULEs
+- ✅ Real-time double-auction phase — converging bid/ask lines, store market-maker,
+  Smithore refined back into MULEs
 - ⬜ Colony events (pirates, sunspots, pest attacks)
-- ⬜ Real-time double-auction phase
+- ⬜ Resource consumption (Food buys turn time, Energy powers production)
 - ⬜ Networked multiplayer
 
 ## Architecture
@@ -60,8 +62,11 @@ dotnet run --project src/Mule.Game
 
 The turn loop: claim a plot, walk to **TOWN** to buy and outfit a MULE, then walk
 it back to your land and install it. When the timer runs out (or you press Enter),
-production resolves and the next month begins. The other three colonists are played
-by the AI, which you can watch move, buy, and build during their turns.
+production resolves and each resource goes to a **real-time auction** — raise or
+lower your price with Up/Down; a trade fires the moment a buyer's line meets a
+seller's, with the store bounding the market and refining Smithore into new MULEs.
+Then the next month begins. The other three colonists are played by the AI, which
+you can watch move, buy, build, and trade.
 
 ### Headless self-check
 

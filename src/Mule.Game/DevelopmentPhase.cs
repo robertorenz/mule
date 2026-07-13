@@ -17,7 +17,7 @@ namespace Mule.Game;
 /// </summary>
 public sealed class DevelopmentPhase
 {
-    private enum Mode { Walking, Store, AiTurn, Summary, GameOver }
+    private enum Mode { Walking, Store, AiTurn, Auction, Summary, GameOver }
 
     private const float TurnSeconds = 45f;
     private const float PawnSpeed = 260f; // pixels/second
@@ -41,6 +41,11 @@ public sealed class DevelopmentPhase
     private Vector2 _aiTarget;
     private float _aiPause;
 
+    // Auction phase
+    private Auction? _auction;
+    private Queue<Resource> _auctionQueue = new();
+    private readonly int _humanId;
+
     private KeyboardState _prevKeys;
     private MapLayout _layout;
 
@@ -48,6 +53,11 @@ public sealed class DevelopmentPhase
     {
         _state = state;
         _layout = layout;
+
+        _humanId = -1;
+        foreach (var p in state.Players)
+            if (!p.IsAI) { _humanId = p.Id; break; }
+
         AdvanceToNextColonist();
     }
 
@@ -55,10 +65,30 @@ public sealed class DevelopmentPhase
         _activeIndex >= 0 && _activeIndex < _state.Players.Count ? _state.Players[_activeIndex] : null;
 
     /// <summary>Esc quits only when it isn't being used to dismiss a modal.</summary>
-    public bool CanQuitOnEscape => _mode is Mode.Walking or Mode.AiTurn or Mode.GameOver;
+    public bool CanQuitOnEscape => _mode is Mode.Walking or Mode.AiTurn or Mode.Auction or Mode.GameOver;
+
+    /// <summary>True while an auction is running, so the map is replaced by the auction view.</summary>
+    public bool IsAuction => _mode == Mode.Auction;
 
     /// <summary>Test hook: force the store open so verification tooling can capture it.</summary>
     public void DebugOpenStore() => _mode = Mode.Store;
+
+    /// <summary>Test hook: seed goods and jump straight into the auction sequence.</summary>
+    public void DebugStartAuction()
+    {
+        for (int i = 0; i < _state.Players.Count; i++)
+        {
+            var p = _state.Players[i];
+            p.SetStore(Resource.Food, i < 2 ? 6 : 0); // two sellers, two buyers
+            p.SetStore(Resource.Smithore, 4);
+        }
+        _auctionQueue = new Queue<Resource>(new[]
+        {
+            Resource.Food, Resource.Energy, Resource.Smithore, Resource.Crystite
+        });
+        _state.Phase = GamePhase.Auction;
+        BeginNextAuction();
+    }
 
     // ---- Update ------------------------------------------------------------
 
@@ -72,6 +102,7 @@ public sealed class DevelopmentPhase
             case Mode.Walking: UpdateWalking(dt, keys); break;
             case Mode.Store: UpdateStore(keys); break;
             case Mode.AiTurn: UpdateAiTurn(dt); break;
+            case Mode.Auction: UpdateAuction(dt, keys); break;
             case Mode.Summary: UpdateSummary(keys); break;
             case Mode.GameOver: break;
         }
@@ -282,6 +313,48 @@ public sealed class DevelopmentPhase
         _state.Phase = GamePhase.Production;
         _lastProduction = Production.Resolve(_state);
 
+        // Sell the harvest: auction each resource in turn, then wrap up the month.
+        _auctionQueue = new Queue<Resource>(new[]
+        {
+            Resource.Food, Resource.Energy, Resource.Smithore, Resource.Crystite
+        });
+        _state.Phase = GamePhase.Auction;
+        BeginNextAuction();
+    }
+
+    private void BeginNextAuction()
+    {
+        if (_auctionQueue.Count == 0)
+        {
+            EndMonth();
+            return;
+        }
+        _auction = Auction.Create(_state, _auctionQueue.Dequeue());
+        _mode = Mode.Auction;
+    }
+
+    private void UpdateAuction(float dt, KeyboardState keys)
+    {
+        if (_auction == null) { BeginNextAuction(); return; }
+
+        int dir = 0;
+        if (keys.IsKeyDown(Keys.Up)) dir += 1;
+        if (keys.IsKeyDown(Keys.Down)) dir -= 1;
+        _auction.SetHumanIntent(_humanId, dir);
+
+        _auction.Update(_state, dt);
+
+        if (Pressed(keys, Keys.Enter))       // let the player skip ahead
+            _auction = null;
+        else if (_auction != null && _auction.IsComplete)
+            _auction = null;
+
+        if (_auction == null)
+            BeginNextAuction();
+    }
+
+    private void EndMonth()
+    {
         if (_state.Month >= _state.TotalMonths)
         {
             _state.Phase = GamePhase.GameOver;
@@ -289,6 +362,7 @@ public sealed class DevelopmentPhase
         }
         else
         {
+            _state.Phase = GamePhase.Resolution;
             _mode = Mode.Summary;
         }
     }
@@ -326,6 +400,12 @@ public sealed class DevelopmentPhase
     /// <summary>Pawn, timer bar and status message, drawn over the map.</summary>
     public void DrawWorld(SpriteBatch batch, ShapeBatch shapes, SpriteFont font)
     {
+        if (_mode == Mode.Auction)
+        {
+            DrawAuction(batch, shapes, font);
+            return;
+        }
+
         // The colonist pawn.
         if (_mode is Mode.Walking or Mode.Store or Mode.AiTurn)
         {
@@ -366,6 +446,105 @@ public sealed class DevelopmentPhase
             shapes.Fill(new Rectangle((int)pos.X - 10, (int)pos.Y - 4, (int)size.X + 20, (int)size.Y + 8), Palette.Panel);
             batch.DrawString(font, _message, pos, Palette.Text);
         }
+    }
+
+    private float PriceToY(Rectangle area, float price)
+    {
+        float t = (price - _auction!.PriceMin) / MathF.Max(1f, _auction.PriceMax - _auction.PriceMin);
+        return area.Bottom - t * area.Height;
+    }
+
+    private void DrawAuction(SpriteBatch batch, ShapeBatch shapes, SpriteFont font)
+    {
+        if (_auction == null) return;
+
+        // Cover the map region with a clean panel.
+        var canvas = _layout.Bounds;
+        shapes.Fill(canvas, Palette.Background);
+
+        // Header: resource name + swatch + time bar.
+        var accent = Palette.ResourceColor(_auction.Resource);
+        shapes.Fill(new Rectangle(canvas.Left, canvas.Top, 16, 16), accent);
+        batch.DrawString(font, $"{_auction.Resource} AUCTION", new Vector2(canvas.Left + 26, canvas.Top - 2),
+            Palette.Text, 0f, Vector2.Zero, 1.3f, SpriteEffects.None, 0f);
+
+        var timerBg = new Rectangle(canvas.Left, canvas.Top + 26, canvas.Width, 5);
+        shapes.Fill(timerBg, Palette.PanelLight);
+        float tpct = Math.Clamp(_auction.TimeLeft / _auction.Duration, 0f, 1f);
+        shapes.Fill(new Rectangle(canvas.Left, canvas.Top + 26, (int)(canvas.Width * tpct), 5), accent);
+
+        // Price chart area (leave a left gutter for axis labels).
+        int gutter = 96;
+        var chart = new Rectangle(canvas.Left + gutter, canvas.Top + 48, canvas.Width - gutter - 12, canvas.Height - 92);
+        shapes.Fill(chart, Palette.Panel);
+        shapes.Outline(chart, Palette.Grid, 1);
+
+        // Store reference lines.
+        DrawPriceLine(batch, shapes, font, chart, _auction.StoreSellPrice, Palette.TextMuted, "store sells");
+        DrawPriceLine(batch, shapes, font, chart, _auction.StoreBuyPrice, Palette.TextMuted, "store buys");
+
+        // Player columns: buyers left third, sellers right third. The store sits at
+        // the far edge as the market "wall" on its two price lines.
+        int buyerX = chart.Left + chart.Width / 3;
+        int sellerX = chart.Left + chart.Width * 2 / 3;
+        batch.DrawString(font, "BUYERS", new Vector2(buyerX - 28, chart.Bottom + 8), Palette.TextMuted);
+        batch.DrawString(font, "SELLERS", new Vector2(sellerX - 30, chart.Bottom + 8), Palette.TextMuted);
+
+        var buyers = new List<AuctionTrader>();
+        var sellers = new List<AuctionTrader>();
+        foreach (var t in _auction.Traders)
+        {
+            if (!t.Active) continue;
+            if (t.IsStore) DrawTraderMarker(batch, shapes, font, chart.Right - 20, t, chart);
+            else (t.Role == AuctionRole.Buyer ? buyers : sellers).Add(t);
+        }
+
+        DrawTraderColumn(batch, shapes, font, buyers, buyerX, chart);
+        DrawTraderColumn(batch, shapes, font, sellers, sellerX, chart);
+
+        // Last-trade ticker.
+        if (_auction.LastTrade is { } lt)
+        {
+            string who = lt.SellerId < 0 ? "store" : _state.PlayerById(lt.SellerId)?.Name ?? "?";
+            string to = lt.BuyerId < 0 ? "store" : _state.PlayerById(lt.BuyerId)?.Name ?? "?";
+            batch.DrawString(font, $"Last: {who} -> {to}  1 {_auction.Resource} @ ${lt.Price}   ({_auction.TradeCount} trades)",
+                new Vector2(canvas.Left, canvas.Bottom - 20), Palette.TextMuted);
+        }
+    }
+
+    private void DrawTraderColumn(SpriteBatch batch, ShapeBatch shapes, SpriteFont font,
+        List<AuctionTrader> traders, int centerX, Rectangle chart)
+    {
+        int n = traders.Count;
+        for (int i = 0; i < n; i++)
+        {
+            int x = centerX + (int)((i - (n - 1) / 2f) * 72f); // centered fan-out
+            DrawTraderMarker(batch, shapes, font, x, traders[i], chart);
+        }
+    }
+
+    private void DrawTraderMarker(SpriteBatch batch, ShapeBatch shapes, SpriteFont font,
+        int x, AuctionTrader t, Rectangle chart)
+    {
+        int y = (int)Math.Clamp(PriceToY(chart, t.Price), chart.Top + 8, chart.Bottom - 8);
+        bool isHuman = !t.IsStore && t.PlayerId == _humanId;
+        Color color = t.IsStore ? Palette.PanelLight : Palette.FromPacked(_state.PlayerById(t.PlayerId)!.Color);
+
+        var marker = new Rectangle(x - 11, y - 11, 22, 22);
+        shapes.Fill(marker, color);
+        shapes.Outline(marker, isHuman ? Palette.Text : Palette.Background, isHuman ? 3 : 2);
+
+        string label = t.IsStore ? "store" : (isHuman ? "YOU" : _state.PlayerById(t.PlayerId)!.Name);
+        if (!t.IsStore) label += $" x{t.Quantity}";
+        batch.DrawString(font, label, new Vector2(x - 12, y + 14), t.IsStore ? Palette.TextMuted : color);
+    }
+
+    private void DrawPriceLine(SpriteBatch batch, ShapeBatch shapes, SpriteFont font, Rectangle chart, int price, Color color, string label)
+    {
+        int y = (int)Math.Clamp(PriceToY(chart, price), chart.Top, chart.Bottom);
+        for (int x = chart.Left; x < chart.Right; x += 12)  // dashed
+            shapes.Fill(new Rectangle(x, y, 6, 1), color);
+        batch.DrawString(font, $"${price} {label}", new Vector2(chart.Left - 90, y - 8), color);
     }
 
     /// <summary>Full-screen modal overlays (store, month summary, game over).</summary>

@@ -44,6 +44,19 @@ public static class Simulation
             state.Phase = GamePhase.Production;
             var produced = Production.Resolve(state);
 
+            // Auction each resource to completion (all AI, no human intent).
+            state.Phase = GamePhase.Auction;
+            int trades = 0, mulesBefore = state.Store.MulesAvailable;
+            foreach (Resource resource in System.Enum.GetValues<Resource>())
+            {
+                var auction = Auction.Create(state, resource);
+                int guard = 0;
+                while (!auction.IsComplete && guard++ < 10000)
+                    auction.Update(state, 1f / 30f);
+                trades += auction.TradeCount;
+            }
+            int mulesMade = state.Store.MulesAvailable - mulesBefore;
+
             log.Append($"Month {month:D2}: ");
             for (int i = 0; i < state.Players.Count; i++)
             {
@@ -51,7 +64,7 @@ public static class Simulation
                 log.Append($"{p.Name} ${p.Money}/sc {p.Score(state)}");
                 if (i < state.Players.Count - 1) log.Append("  |  ");
             }
-            log.Append($"   (+{produced.Count} MULE yields)\n");
+            log.Append($"   (+{produced.Count} yields, {trades} trades, +{mulesMade} MULEs made)\n");
         }
 
         int owned = 0, mules = 0;
