@@ -238,13 +238,20 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
     private void DrawMap()
     {
+        // Background scene first: the landscape and the river run underneath, and the
+        // plot squares are layered on top (river plots are left transparent so the
+        // water shows through — as in the original).
+        var board = new Rectangle(_layout.OriginX, _layout.OriginY,
+            _layout.Cell * _layout.Width, _layout.Cell * _layout.Height);
+        _shapes.Fill(board, BoardLand);
+        DrawRiverBackground(board);
+
         foreach (var plot in _state.Map.AllPlots())
         {
             var rect = _layout.PlotRect(plot.X, plot.Y);
 
-            if (plot.Terrain == Terrain.River)
-                DrawWater(_layout.FullRect(plot.X, plot.Y)); // fill the whole cell so water joins up
-            else
+            // Land and town squares are opaque; river squares stay clear over the water.
+            if (plot.Terrain != Terrain.River)
                 _shapes.Fill(rect, Palette.TerrainColor(plot.Terrain));
 
             if (plot.Terrain == Terrain.Town)
@@ -255,15 +262,16 @@ public class Game1 : Microsoft.Xna.Framework.Game
                     new Vector2(rect.Center.X - ls.X / 2, rect.Center.Y - ls.Y / 2), Palette.Text);
             }
 
+            // Every square gets a border, so the grid clearly sits over the scene.
             if (plot.IsOwned)
             {
                 var owner = _state.PlayerById(plot.OwnerId);
                 if (owner != null)
                     _shapes.Outline(rect, Palette.FromPacked(owner.Color), 3);
             }
-            else if (plot.Terrain != Terrain.River)
+            else
             {
-                _shapes.Outline(rect, Palette.Grid, 1); // rivers have no grid line, so they flow
+                _shapes.Outline(rect, plot.Terrain == Terrain.River ? WaterEdge : Palette.Grid, 1);
             }
 
             if (plot.HasMule)
@@ -276,30 +284,47 @@ public class Game1 : Microsoft.Xna.Framework.Game
         }
     }
 
-    private static readonly Color WaterDeep = new(0x1B, 0x3E, 0x4E);
-    private static readonly Color WaterRipple = new(0x4C, 0x82, 0x99);
-    private static readonly Color WaterGlint = new(0x7E, 0xB6, 0xC8);
+    private static readonly Color BoardLand  = new(0x20, 0x27, 0x22);
+    private static readonly Color WaterDeep  = new(0x1B, 0x3E, 0x4E);
+    private static readonly Color WaterBank  = new(0x2C, 0x55, 0x66);
+    private static readonly Color WaterGlint = new(0x8A, 0xC0, 0xD2);
+    private static readonly Color WaterEdge  = new(0x35, 0x60, 0x72);
 
-    /// <summary>Draws a river cell as animated water: a deep base with drifting ripples.</summary>
-    private void DrawWater(Rectangle cell)
+    /// <summary>
+    /// Draws a continuous, gently winding river down the town column as a background
+    /// layer, with wavy banks and drifting surface glints — the plot grid is drawn
+    /// over the top afterwards.
+    /// </summary>
+    private void DrawRiverBackground(Rectangle board)
     {
-        _shapes.Fill(cell, WaterDeep);
+        float cell = _layout.Cell;
+        int townCol = _state.Map.Width / 2;
+        float centerX = _layout.OriginX + townCol * cell + cell / 2f;
 
-        // A few horizontal ripple lines that undulate and drift over time.
-        int rows = Math.Max(3, cell.Height / 14);
-        int seg = 3;
-        for (int r = 0; r < rows; r++)
+        // The water body: horizontal slices whose center meanders and whose width
+        // breathes, giving a natural riverbank rather than straight edges.
+        for (int y = board.Top; y < board.Bottom; y += 2)
         {
-            float baseY = cell.Top + cell.Height * (r + 0.5f) / rows;
-            float rowPhase = r * 1.7f;
-            bool glint = r % 2 == 0;
-            for (int x = cell.Left; x < cell.Right; x += seg)
+            float ty = y - board.Top;
+            float meander = MathF.Sin(ty * 0.016f + _time * 0.5f) * (cell * 0.10f);
+            float half = cell * 0.44f + MathF.Sin(ty * 0.055f + _time * 0.8f) * (cell * 0.06f);
+            float cx = centerX + meander;
+            _shapes.Fill(cx - half - 2f, y, (half + 2f) * 2f, 2f, WaterBank); // lighter bank
+            _shapes.Fill(cx - half, y, half * 2f, 2f, WaterDeep);             // deep water
+        }
+
+        // Surface glints: short dashes drifting along the current.
+        for (int y = board.Top + 6; y < board.Bottom; y += 13)
+        {
+            float ty = y - board.Top;
+            float meander = MathF.Sin(ty * 0.016f + _time * 0.5f) * (cell * 0.10f);
+            float half = cell * 0.44f + MathF.Sin(ty * 0.055f + _time * 0.8f) * (cell * 0.06f);
+            float cx = centerX + meander;
+            for (float x = cx - half + 5; x < cx + half - 5; x += 11)
             {
-                float wave = MathF.Sin(x * 0.16f + _time * 1.8f + rowPhase);
-                float y = baseY + wave * 2.4f;
-                // Fade ripple in and out along its length for a soft, watery look.
-                float a = 0.35f + 0.4f * (0.5f + 0.5f * MathF.Sin(x * 0.09f - _time * 1.3f + rowPhase));
-                _shapes.Fill(x, y, seg, 1.7f, (glint ? WaterGlint : WaterRipple) * a);
+                float wob = MathF.Sin(x * 0.2f + _time * 1.8f + ty * 0.1f) * 1.6f;
+                float a = 0.4f + 0.35f * (0.5f + 0.5f * MathF.Sin(x * 0.12f - _time * 1.4f));
+                _shapes.Fill(x, y + wob, 6f, 1.6f, WaterGlint * a);
             }
         }
     }
