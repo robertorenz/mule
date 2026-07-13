@@ -27,6 +27,9 @@ public sealed class Store
 
     private int _smithoreBuffer;
 
+    /// <summary>Partial Smithore accumulated toward the next MULE. Exposed for snapshots.</summary>
+    public int SmithoreBuffer { get => _smithoreBuffer; set => _smithoreBuffer = value; }
+
     /// <summary>
     /// Feed Smithore the store bought at auction into MULE manufacturing. Every two
     /// units of Smithore yields one new MULE, restocking the store's supply.

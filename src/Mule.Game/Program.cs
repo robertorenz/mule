@@ -6,5 +6,12 @@ if (System.Environment.GetEnvironmentVariable("MULE_SIMULATE") != null)
     return;
 }
 
+// Loopback proof for the networking foundation (serialize + TCP + restore).
+if (System.Environment.GetEnvironmentVariable("MULE_NETTEST") != null)
+{
+    System.Console.Write(Mule.Core.Net.NetTest.RunLoopback());
+    return;
+}
+
 using var game = new Mule.Game.Game1();
 game.Run();
