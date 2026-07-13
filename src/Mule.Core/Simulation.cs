@@ -14,12 +14,15 @@ public static class Simulation
     {
         var state = GameFactory.NewGame(seed, humanPlayers: 0, totalPlayers: 4, totalMonths: totalMonths);
         var log = new StringBuilder();
+        int underfedMonths = 0;
 
         for (int month = 1; month <= totalMonths; month++)
         {
             state.Month = month;
             state.Phase = GamePhase.Development;
             Upkeep.ConsumeFood(state);
+            foreach (var p in state.Players)
+                if (p.TimeFactor < 0.999f) underfedMonths++;
             var evt = ColonyEvents.Resolve(state);
 
             foreach (var player in state.Players)
@@ -80,6 +83,7 @@ public static class Simulation
         }
         log.Append($"Final: {owned} plots claimed, {mules} MULEs installed, " +
                    $"{state.Store.MulesAvailable} MULEs left in store.\n");
+        log.Append($"Underfed colonist-months: {underfedMonths} (lower is a smarter, better-fed AI).\n");
 
         return log.ToString();
     }

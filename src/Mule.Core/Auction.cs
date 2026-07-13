@@ -70,10 +70,15 @@ public sealed class Auction
         _driftRate = MathF.Max(2f, (max - min) / 8f);
     }
 
-    /// <summary>Per-resource reserve to hold back and target to top up to.</summary>
-    private static (int reserve, int target) Policy(Resource r) => r switch
+    /// <summary>
+    /// Per-resource reserve to hold back and target to top up to. Food scales with
+    /// what colonists must eat next month (plus a small buffer against events), so
+    /// they never sell away the food they need — the difference between a well-fed
+    /// AI and a starving one.
+    /// </summary>
+    private static (int reserve, int target) Policy(Resource r, int month) => r switch
     {
-        Resource.Food => (3, 4),
+        Resource.Food => (Upkeep.FoodNeeded(month + 1) + 1, Upkeep.FoodNeeded(month + 1) + 1),
         Resource.Energy => (2, 3),
         _ => (0, 0) // Smithore & Crystite: sell all surplus, never bought by players
     };
@@ -89,7 +94,7 @@ public sealed class Auction
         int storeSell = (int)MathF.Round(spot * 1.5f);
 
         var auction = new Auction(resource, min, max, storeBuy, storeSell);
-        var (reserve, target) = Policy(resource);
+        var (reserve, target) = Policy(resource, state.Month);
 
         foreach (var player in state.Players)
         {
@@ -177,11 +182,22 @@ public sealed class Auction
 
             float speed;
             if (t.PlayerId == _humanPlayerId)
+            {
+                // The human has the full price range to work with — including the
+                // freedom to hold out or to overpay.
                 speed = (autoDir * 0.5f + _humanIntent * 1.5f) * _driftRate;
+                t.Price = Math.Clamp(t.Price + speed * dt, PriceMin, PriceMax);
+            }
             else
+            {
+                // AI colonists keep a reservation price: a seller never undercuts what
+                // the store pays, and a buyer never bids above what the store charges.
+                // Within that band they still converge so trades happen.
                 speed = autoDir * _driftRate;
-
-            t.Price = Math.Clamp(t.Price + speed * dt, PriceMin, PriceMax);
+                float lo = t.Role == AuctionRole.Seller ? StoreBuyPrice : PriceMin;
+                float hi = t.Role == AuctionRole.Buyer ? StoreSellPrice : PriceMax;
+                t.Price = Math.Clamp(t.Price + speed * dt, lo, hi);
+            }
         }
     }
 

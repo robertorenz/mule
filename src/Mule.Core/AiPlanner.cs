@@ -31,20 +31,33 @@ public static class AiPlanner
         // Gauge our own power balance: MULEs that need Energy vs the Energy we make
         // plus what's in store. If we can't keep our machines running, powering up
         // has to come before adding more mouths to feed.
-        int powerDraw = 0, energyIncome = 0;
+        int powerDraw = 0, energyIncome = 0, foodIncome = 0;
         foreach (var owned in state.Map.AllPlots())
         {
             if (owned.OwnerId != player.Id || !owned.HasMule) continue;
-            if (owned.Mule == MuleOutfit.Energy)
-                energyIncome += (int)owned.Terrain.BaseYield(Resource.Energy);
-            else
-                powerDraw++;
+            switch (owned.Mule)
+            {
+                case MuleOutfit.Energy:
+                    energyIncome += (int)owned.Terrain.BaseYield(Resource.Energy);
+                    break;
+                case MuleOutfit.Food:
+                    foodIncome += (int)owned.Terrain.BaseYield(Resource.Food);
+                    powerDraw++; // food MULEs still need power to run
+                    break;
+                default:
+                    powerDraw++;
+                    break;
+            }
         }
         // Aim for self-sufficiency: our Energy MULEs should generate enough power to
         // run all our other MULEs. The store's Energy gets consumed every month, so
         // we can't lean on it — income has to cover the draw. Staying ahead of this
         // keeps production (and the Smithore that restocks the store) flowing.
         bool energyShort = energyIncome < powerDraw;
+
+        // Likewise stay fed: our Food MULEs should cover this month's eating, or the
+        // colonist's turns get cut short. Power comes first, then food, then profit.
+        bool foodShort = foodIncome < Upkeep.FoodNeeded(state.Month);
 
         Plot? bestPlot = null;
         Resource bestResource = default;
@@ -79,6 +92,9 @@ public static class AiPlanner
                 // When we're power-starved, an Energy MULE is worth far more than its
                 // raw yield — it's what lets the rest of our MULEs produce at all.
                 if (resource == Resource.Energy && energyShort) value += 1000f;
+
+                // Securing the food supply is next most important after power.
+                if (resource == Resource.Food && foodShort) value += 800f;
 
                 if (value > bestScore)
                 {

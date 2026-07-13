@@ -25,7 +25,8 @@ Early scaffolding. The foundation is in place and runnable:
   the leader, keeping the race close
 - ✅ Setup screen — choose players, humans, difficulty, game length and map seed;
   play again from the end screen
-- ⬜ Smarter AI (react to prices and shortages)
+- ✅ Smarter AI — stays energy- and food-self-sufficient and bids the auction with
+  reservation prices (won't dump goods below the store price or overpay above it)
 - ⬜ Networked multiplayer
 
 ## Architecture
