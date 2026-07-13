@@ -57,6 +57,8 @@ public class Game1 : Microsoft.Xna.Framework.Game
             _dev.DebugOpenStore();
         if (Environment.GetEnvironmentVariable("MULE_AUCTION") != null)
             _dev.DebugStartAuction();
+        if (Environment.GetEnvironmentVariable("MULE_SUMMARY") != null)
+            _dev.DebugShowSummary();
         base.Initialize();
     }
 

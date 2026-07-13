@@ -34,6 +34,8 @@ public sealed class DevelopmentPhase
 
     private int _storeSelection;
     private IReadOnlyList<ProductionResult> _lastProduction = Array.Empty<ProductionResult>();
+    private int _lastUnpowered;
+    private FoodUpkeep[] _lastUpkeep = Array.Empty<FoodUpkeep>();
 
     // AI turn playback
     private List<AiAction> _aiPlan = new();
@@ -58,6 +60,7 @@ public sealed class DevelopmentPhase
         foreach (var p in state.Players)
             if (!p.IsAI) { _humanId = p.Id; break; }
 
+        _lastUpkeep = Upkeep.ConsumeFood(_state); // month 1 upkeep before the first turn
         AdvanceToNextColonist();
     }
 
@@ -72,6 +75,28 @@ public sealed class DevelopmentPhase
 
     /// <summary>Test hook: force the store open so verification tooling can capture it.</summary>
     public void DebugOpenStore() => _mode = Mode.Store;
+
+    /// <summary>Test hook: seed some MULEs with too little energy, then show the summary.</summary>
+    public void DebugShowSummary()
+    {
+        (int x, int y, MuleOutfit outfit)[] seed =
+        {
+            (3, 1, MuleOutfit.Food), (5, 1, MuleOutfit.Smithore), (6, 3, MuleOutfit.Crystite),
+        };
+        foreach (var (x, y, outfit) in seed)
+        {
+            var plot = _state.Map.At(x, y);
+            plot.OwnerId = 0;
+            plot.Mule = outfit;
+        }
+        _state.Players[0].SetStore(Resource.Energy, 1); // only enough to run one MULE
+
+        var report = Production.Resolve(_state);
+        _lastProduction = report.Yields;
+        _lastUnpowered = report.UnpoweredMules;
+        _state.Phase = GamePhase.Resolution;
+        _mode = Mode.Summary;
+    }
 
     /// <summary>Test hook: seed goods and jump straight into the auction sequence.</summary>
     public void DebugStartAuction()
@@ -289,10 +314,11 @@ public sealed class DevelopmentPhase
         _activeIndex = index;
         _state.ActivePlayerIndex = index;
         _state.Phase = GamePhase.Development;
-        _timeLeft = TurnSeconds;
         _pawn = TownCenter();
 
         var colonist = _state.Players[index];
+        _timeLeft = TurnSeconds * colonist.TimeFactor;
+
         if (colonist.IsAI)
         {
             _aiPlan = AiPlanner.PlanTurn(_state, colonist);
@@ -305,13 +331,17 @@ public sealed class DevelopmentPhase
         else
         {
             _mode = Mode.Walking;
+            if (colonist.TimeFactor < 0.999f)
+                Flash($"Short on food - turn cut to {(int)MathF.Round(colonist.TimeFactor * 100)}%.");
         }
     }
 
     private void ResolveMonth()
     {
         _state.Phase = GamePhase.Production;
-        _lastProduction = Production.Resolve(_state);
+        var report = Production.Resolve(_state);
+        _lastProduction = report.Yields;
+        _lastUnpowered = report.UnpoweredMules;
 
         // Sell the harvest: auction each resource in turn, then wrap up the month.
         _auctionQueue = new Queue<Resource>(new[]
@@ -372,6 +402,7 @@ public sealed class DevelopmentPhase
         if (Pressed(keys, Keys.Enter) || Pressed(keys, Keys.Space))
         {
             _state.Month++;
+            _lastUpkeep = Upkeep.ConsumeFood(_state); // eat before the new month's turns
             _activeIndex = -1;
             AdvanceToNextColonist();
         }
@@ -627,6 +658,18 @@ public sealed class DevelopmentPhase
                 batch.DrawString(font, $"  {owner?.Name}: +{r.Amount} {r.Resource}", new Vector2(x + 18, y), Palette.Text);
                 y += 24;
             }
+
+            if (_lastUnpowered > 0)
+            {
+                y += 6;
+                shapes.Fill(new Rectangle(x, y + 3, 10, 10), Palette.Energy);
+                batch.DrawString(font, $"  {_lastUnpowered} MULE(s) idle - not enough Energy to run them",
+                    new Vector2(x + 18, y), Palette.Energy);
+                y += 30;
+            }
+
+            batch.DrawString(font, $"Next month each colonist must eat {Upkeep.FoodNeeded(_state.Month + 1)} Food.",
+                new Vector2(x, panel.Bottom - 72), Palette.TextMuted);
         }
         else
         {

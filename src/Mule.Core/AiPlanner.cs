@@ -28,6 +28,24 @@ public static class AiPlanner
         // can't equip.
         if (state.Store.MulesAvailable <= 0) return actions;
 
+        // Gauge our own power balance: MULEs that need Energy vs the Energy we make
+        // plus what's in store. If we can't keep our machines running, powering up
+        // has to come before adding more mouths to feed.
+        int powerDraw = 0, energyIncome = 0;
+        foreach (var owned in state.Map.AllPlots())
+        {
+            if (owned.OwnerId != player.Id || !owned.HasMule) continue;
+            if (owned.Mule == MuleOutfit.Energy)
+                energyIncome += (int)owned.Terrain.BaseYield(Resource.Energy);
+            else
+                powerDraw++;
+        }
+        // Aim for self-sufficiency: our Energy MULEs should generate enough power to
+        // run all our other MULEs. The store's Energy gets consumed every month, so
+        // we can't lean on it — income has to cover the draw. Staying ahead of this
+        // keeps production (and the Smithore that restocks the store) flowing.
+        bool energyShort = energyIncome < powerDraw;
+
         Plot? bestPlot = null;
         Resource bestResource = default;
         float bestScore = float.NegativeInfinity;
@@ -45,6 +63,10 @@ public static class AiPlanner
                 float yield = plot.Terrain.BaseYield(resource);
                 if (yield <= 0) continue;
 
+                // Don't add a MULE we can't run. While power-starved, only build
+                // Energy — expansion waits until production can actually be powered.
+                if (resource != Resource.Energy && energyShort) continue;
+
                 MuleOutfit outfit = resource.ToOutfit();
                 int cost = state.Store.MulePrice(outfit, state.Prices);
                 if (player.Money < cost) continue;
@@ -53,6 +75,10 @@ public static class AiPlanner
                 // cost, with a small edge for building on land we already hold.
                 float value = yield * state.Prices.SpotPrice(resource) - cost * 0.3f;
                 if (ownedByMe) value += 20f;
+
+                // When we're power-starved, an Energy MULE is worth far more than its
+                // raw yield — it's what lets the rest of our MULEs produce at all.
+                if (resource == Resource.Energy && energyShort) value += 1000f;
 
                 if (value > bestScore)
                 {

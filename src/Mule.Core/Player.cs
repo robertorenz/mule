@@ -25,6 +25,12 @@ public sealed class Player
 
     public bool IsLeadingMule => CarriedMule != MuleOutfit.None;
 
+    /// <summary>
+    /// Fraction (0..1) of a full Development turn this colonist gets this month,
+    /// set by how well they were fed during upkeep. 1 = fully fed.
+    /// </summary>
+    public float TimeFactor { get; set; } = 1f;
+
     private readonly Dictionary<Resource, int> _stores = new()
     {
         [Resource.Food] = 0,

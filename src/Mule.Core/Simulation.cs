@@ -19,6 +19,7 @@ public static class Simulation
         {
             state.Month = month;
             state.Phase = GamePhase.Development;
+            Upkeep.ConsumeFood(state);
 
             foreach (var player in state.Players)
             {
@@ -43,6 +44,7 @@ public static class Simulation
 
             state.Phase = GamePhase.Production;
             var produced = Production.Resolve(state);
+            int unpowered = produced.UnpoweredMules;
 
             // Auction each resource to completion (all AI, no human intent).
             state.Phase = GamePhase.Auction;
@@ -64,7 +66,7 @@ public static class Simulation
                 log.Append($"{p.Name} ${p.Money}/sc {p.Score(state)}");
                 if (i < state.Players.Count - 1) log.Append("  |  ");
             }
-            log.Append($"   (+{produced.Count} yields, {trades} trades, +{mulesMade} MULEs made)\n");
+            log.Append($"   (+{produced.Yields.Count} yields, {unpowered} idle, {trades} trades, +{mulesMade} MULEs)\n");
         }
 
         int owned = 0, mules = 0;

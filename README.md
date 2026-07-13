@@ -18,8 +18,11 @@ Early scaffolding. The foundation is in place and runnable:
 - ✅ AI opponents — evaluate the best plot/resource, claim, buy, and install MULEs
 - ✅ Real-time double-auction phase — converging bid/ask lines, store market-maker,
   Smithore refined back into MULEs
+- ✅ Resource consumption — Food sets your turn length, Energy powers production
+  (unpowered MULEs sit idle); the AI keeps itself self-sufficient in power
 - ⬜ Colony events (pirates, sunspots, pest attacks)
-- ⬜ Resource consumption (Food buys turn time, Energy powers production)
+- ⬜ A setup screen (players, colors, difficulty, seed)
+- ⬜ Smarter AI (react to prices and shortages)
 - ⬜ Networked multiplayer
 
 ## Architecture
@@ -38,9 +41,9 @@ Up to four colonists compete over a fixed number of months to build the most
 wealth. Each turn they claim land, outfit MULEs to harvest one of four
 resources, and haggle in a live auction:
 
-- **Food** — buys you time each turn
-- **Energy** — powers your plots' production
-- **Smithore** — refined into new MULEs
+- **Food** — how much you eat each month sets how long your next turn is
+- **Energy** — each producing MULE burns one unit; unpowered MULEs sit idle
+- **Smithore** — the store refines it into new MULEs
 - **Crystite** — a pure export good, price swings wildly
 
 ## Building & running
